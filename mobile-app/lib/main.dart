@@ -10,19 +10,19 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const TaxoparkApp());
+  runApp(const AsemProApp());
 }
 
-class TaxoparkApp extends StatelessWidget {
-  const TaxoparkApp({super.key});
+class AsemProApp extends StatelessWidget {
+  const AsemProApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Таксопарк',
+      title: 'AsemPro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6366F1)),
         useMaterial3: true,
         fontFamily: 'Roboto',
       ),

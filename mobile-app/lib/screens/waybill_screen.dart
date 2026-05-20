@@ -27,7 +27,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Путевой лист'),
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -118,7 +118,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
                   style: const TextStyle(fontSize: 16),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: const Color(0xFF6366F1),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

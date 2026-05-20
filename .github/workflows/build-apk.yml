@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
 
@@ -30,42 +30,114 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Initialize Flutter project
+      - name: Prepare Flutter project
         run: |
-          # Save our custom source files
-          cp -r mobile-app/lib /tmp/our_lib
-          cp mobile-app/pubspec.yaml /tmp/our_pubspec.yaml
-          cp mobile-app/android/app/google-services.json /tmp/google-services.json
+          set -e
           
-          # Create a proper Flutter project in mobile-app directory
+          # Backup our custom files
+          mkdir -p /tmp/backup
+          cp -r mobile-app/lib /tmp/backup/lib
+          cp mobile-app/pubspec.yaml /tmp/backup/pubspec.yaml
+          cp mobile-app/android/app/google-services.json /tmp/backup/google-services.json
+          [ -f mobile-app/analysis_options.yaml ] && cp mobile-app/analysis_options.yaml /tmp/backup/analysis_options.yaml
+          
+          # Remove old mobile-app and create fresh Flutter project
           rm -rf mobile-app
-          flutter create --org com.taxopark --project-name taxopark_driver mobile-app
+          flutter create --org com.taxopark --project-name driver --platforms android mobile-app
           
-          # Restore our custom source files
+          # Restore our code
           rm -rf mobile-app/lib
-          cp -r /tmp/our_lib mobile-app/lib
-          cp /tmp/our_pubspec.yaml mobile-app/pubspec.yaml
-          cp /tmp/google-services.json mobile-app/android/app/google-services.json
+          cp -r /tmp/backup/lib mobile-app/lib
+          cp /tmp/backup/pubspec.yaml mobile-app/pubspec.yaml
+          cp /tmp/backup/google-services.json mobile-app/android/app/google-services.json
+          [ -f /tmp/backup/analysis_options.yaml ] && cp /tmp/backup/analysis_options.yaml mobile-app/analysis_options.yaml
           
-          # Add Google Services plugin to android/build.gradle
-          cd mobile-app/android
+          # Patch android/settings.gradle - add GMS plugin
+          cat > mobile-app/android/settings.gradle << 'SETTINGS_EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.1.4" apply false
+              id "org.jetbrains.kotlin.android" version "1.9.22" apply false
+              id "com.google.gms.google-services" version "4.4.0" apply false
+          }
+          include ":app"
+          SETTINGS_EOF
           
-          # Update settings.gradle to include google-services
-          sed -i 's/id "com.android.application" version .* apply false/id "com.android.application" version "8.1.4" apply false\n    id "com.google.gms.google-services" version "4.4.0" apply false/' settings.gradle
+          # Patch app/build.gradle
+          cat > mobile-app/android/app/build.gradle << 'BUILD_EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+              id "com.google.gms.google-services"
+          }
           
-          # Update app/build.gradle
-          cd app
-          # Add google-services plugin
-          sed -i '/id "com.android.application"/a\    id "com.google.gms.google-services"' build.gradle
-          # Add Firebase BOM dependency
-          sed -i '/dependencies {/a\    implementation platform("com.google.firebase:firebase-bom:32.7.0")\n    implementation "com.google.firebase:firebase-analytics"' build.gradle
-          # Set applicationId
-          sed -i 's/namespace "com.taxopark.taxopark_driver"/namespace "com.taxopark.driver"/' build.gradle
-          sed -i 's/applicationId "com.taxopark.taxopark_driver"/applicationId "com.taxopark.driver"/' build.gradle
-          # Enable multidex
-          sed -i '/minSdk/a\        multiDexEnabled true' build.gradle
+          android {
+              namespace "com.taxopark.driver"
+              compileSdk flutter.compileSdkVersion
+              ndkVersion flutter.ndkVersion
           
-          cd ../../..
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+              defaultConfig {
+                  applicationId "com.taxopark.driver"
+                  minSdk 21
+                  targetSdk flutter.targetSdkVersion
+                  versionCode flutter.versionCode
+                  versionName flutter.versionName
+                  multiDexEnabled true
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                  }
+              }
+          }
+          
+          flutter {
+              source "../.."
+          }
+          
+          dependencies {
+              implementation platform("com.google.firebase:firebase-bom:32.7.0")
+              implementation "com.google.firebase:firebase-analytics"
+          }
+          BUILD_EOF
+          
+          # Fix Kotlin source directory
+          mkdir -p mobile-app/android/app/src/main/kotlin/com/taxopark/driver
+          cat > mobile-app/android/app/src/main/kotlin/com/taxopark/driver/MainActivity.kt << 'KOTLIN_EOF'
+          package com.taxopark.driver
+          import io.flutter.embedding.android.FlutterActivity
+          class MainActivity: FlutterActivity()
+          KOTLIN_EOF
+          
+          # Update AndroidManifest label
+          sed -i 's/android:label="driver"/android:label="AsemPro"/' mobile-app/android/app/src/main/AndroidManifest.xml
+          
+          echo "=== Flutter project prepared ==="
+          ls -la mobile-app/
+          ls -la mobile-app/android/app/
 
       - name: Get dependencies
         working-directory: mobile-app
@@ -75,19 +147,22 @@ jobs:
         working-directory: mobile-app
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: taxopark-driver-apk
+          name: AsemPro-Driver
           path: mobile-app/build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
+          name: AsemPro v${{ github.run_number }}
           files: mobile-app/build/app/outputs/flutter-apk/app-release.apk
-          generate_release_notes: true
+          body: |
+            AsemPro - Приложение для водителей таксопарка
+            
+            Скачайте APK и установите на Android устройство.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

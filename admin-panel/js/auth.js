@@ -66,9 +66,12 @@ const Auth = {
         document.getElementById('login-page').classList.remove('active');
         document.getElementById('dashboard-page').classList.add('active');
         document.getElementById('admin-email').textContent = Auth.currentUser.email;
+        const sidebarEmail = document.getElementById('admin-email-sidebar');
+        if (sidebarEmail) sidebarEmail.textContent = Auth.currentUser.email;
         Drivers.loadDrivers();
         Waybills.loadWaybills();
         Settings.loadSettings();
+        updateDashboard();
     },
 
     showLogin() {

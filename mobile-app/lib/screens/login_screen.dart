@@ -62,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+            colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
           ),
         ),
         child: Center(
@@ -83,11 +83,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Icon(
                         Icons.local_taxi,
                         size: 64,
-                        color: Color(0xFF2563EB),
+                        color: Color(0xFF6366F1),
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Таксопарк',
+                        'AsemPro',
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
@@ -149,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
+                            backgroundColor: const Color(0xFF6366F1),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),

@@ -51,8 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Таксопарк'),
-        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('AsemPro'),
+        backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -88,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               const CircleAvatar(
                                 radius: 30,
-                                backgroundColor: Color(0xFF2563EB),
+                                backgroundColor: Color(0xFF6366F1),
                                 child: Icon(
                                   Icons.person,
                                   size: 36,
@@ -154,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(fontSize: 16),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
+                        backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
