@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "126719829029",
+    "project_id": "project-3077643193540297838",
+    "storage_bucket": "project-3077643193540297838.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126719829029:android:bb57d957740259c6f44bcc",
+        "android_client_info": {
+          "package_name": "com.taxopark.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkMPOu8OXeay131gO4HQ_eF7cTFQK25wY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

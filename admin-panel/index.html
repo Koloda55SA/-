@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Таксопарк - Админ панель</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="login-page" class="page active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <i class="fas fa-taxi"></i>
+                    <h1>Таксопарк</h1>
+                    <p>Панель администратора</p>
+                </div>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" placeholder="admin@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Пароль</label>
+                        <input type="password" id="login-password" placeholder="Введите пароль" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Войти</button>
+                </form>
+                <div id="login-error" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard-page" class="page">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-taxi"></i>
+                <span>Таксопарк</span>
+            </div>
+            <ul class="sidebar-menu">
+                <li class="active" data-section="drivers">
+                    <i class="fas fa-users"></i>
+                    <span>Водители</span>
+                </li>
+                <li data-section="add-driver">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Добавить водителя</span>
+                </li>
+                <li data-section="waybills">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Путевые листы</span>
+                </li>
+                <li data-section="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Настройки</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="btn btn-outline">
+                    <i class="fas fa-sign-out-alt"></i> Выйти
+                </button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <h2 id="page-title">Водители</h2>
+                <div class="user-info">
+                    <span id="admin-email"></span>
+                </div>
+            </header>
+
+            <!-- Drivers Section -->
+            <section id="section-drivers" class="section active">
+                <div class="section-header">
+                    <h3>Список водителей</h3>
+                    <button class="btn btn-primary" onclick="showSection('add-driver')">
+                        <i class="fas fa-plus"></i> Добавить
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="drivers-table">
+                        <thead>
+                            <tr>
+                                <th>ФИО</th>
+                                <th>Телефон</th>
+                                <th>Авто</th>
+                                <th>Гос. номер</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drivers-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Add Driver Section -->
+            <section id="section-add-driver" class="section">
+                <h3>Регистрация нового водителя</h3>
+                <form id="add-driver-form" class="form-card">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ФИО водителя</label>
+                            <input type="text" id="driver-fullname" placeholder="Иванов Иван Иванович" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Телефон</label>
+                            <input type="tel" id="driver-phone" placeholder="+7 (999) 123-45-67" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Email (для входа в приложение)</label>
+                            <input type="email" id="driver-email" placeholder="driver@example.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Пароль (для входа)</label>
+                            <input type="text" id="driver-password" placeholder="Мин. 6 символов" required minlength="6">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Марка автомобиля</label>
+                            <input type="text" id="driver-car" placeholder="Chery Arrizo 8" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Гос. номер</label>
+                            <input type="text" id="driver-plate" placeholder="М855МА55" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Удостоверение (серия номер)</label>
+                            <input type="text" id="driver-license" placeholder="МКК41011DL0592130">
+                        </div>
+                        <div class="form-group">
+                            <label>Класс</label>
+                            <input type="text" id="driver-class" placeholder="В">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Дата выдачи</label>
+                            <input type="date" id="driver-license-issued">
+                        </div>
+                        <div class="form-group">
+                            <label>Дата окончания</label>
+                            <input type="date" id="driver-license-expires">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ID водителя</label>
+                            <input type="text" id="driver-id-number" placeholder="0000746679">
+                        </div>
+                        <div class="form-group">
+                            <label>ОСГОП</label>
+                            <input type="text" id="driver-osgop" placeholder="IGSX22478581408000">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Гаражный номер</label>
+                            <input type="text" id="driver-garage" placeholder="885">
+                        </div>
+                        <div class="form-group">
+                            <label>Табельный номер</label>
+                            <input type="text" id="driver-tab" placeholder="885">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>СНИЛС</label>
+                            <input type="text" id="driver-snils" placeholder="210-779-960 77">
+                        </div>
+                        <div class="form-group">
+                            <label>ИНН</label>
+                            <input type="text" id="driver-inn" placeholder="632414204200">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Вид перевозки</label>
+                            <select id="driver-transport-type">
+                                <option value="Перевозка пассажиров и багажа легковым такси">Перевозка пассажиров и багажа легковым такси</option>
+                                <option value="пригородное, городское">пригородное, городское</option>
+                                <option value="междугороднее">междугороднее</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Вид сообщения</label>
+                            <select id="driver-comm-type">
+                                <option value="пригородное, городское">пригородное, городское</option>
+                                <option value="междугороднее">междугороднее</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Зарегистрировать водителя
+                    </button>
+                </form>
+            </section>
+
+            <!-- Waybills Section -->
+            <section id="section-waybills" class="section">
+                <div class="section-header">
+                    <h3>Путевые листы</h3>
+                </div>
+                <div class="table-container">
+                    <table id="waybills-table">
+                        <thead>
+                            <tr>
+                                <th>Номер</th>
+                                <th>Водитель</th>
+                                <th>Дата</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waybills-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="section-settings" class="section">
+                <h3>Настройки компании</h3>
+                <form id="settings-form" class="form-card">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Название организации</label>
+                            <input type="text" id="setting-org-name" placeholder='ООО "Капитал"'>
+                        </div>
+                        <div class="form-group">
+                            <label>ОГРН(ИП)</label>
+                            <input type="text" id="setting-ogrn" placeholder="1245000132541">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ИНН</label>
+                            <input type="text" id="setting-inn" placeholder="5038191219">
+                        </div>
+                        <div class="form-group">
+                            <label>Телефон</label>
+                            <input type="tel" id="setting-phone" placeholder="+79153955383">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Адрес</label>
+                            <input type="text" id="setting-address" placeholder="141205, Московская область, г.Пушкино, Набережная ул, д. 2а, помещ.к69">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Форма по ОКУД</label>
+                            <input type="text" id="setting-okud" placeholder="0345001">
+                        </div>
+                        <div class="form-group">
+                            <label>Форма по ОКПО</label>
+                            <input type="text" id="setting-okpo" placeholder="36271045">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Номер разрешения (серия)</label>
+                            <input type="text" id="setting-permit" placeholder="509226">
+                        </div>
+                        <div class="form-group">
+                            <label>Приказ Минтранса</label>
+                            <input type="text" id="setting-mintrans" placeholder="390 ОТ 28.29.2022">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Сохранить настройки
+                    </button>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/drivers.js"></script>
+    <script src="js/waybills.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
