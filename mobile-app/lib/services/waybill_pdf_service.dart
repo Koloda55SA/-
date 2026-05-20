@@ -1,7 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 class WaybillPdfService {
   static pw.Font? _regular;
@@ -15,7 +15,9 @@ class WaybillPdfService {
     _bold = pw.Font.ttf(boldData);
   }
 
-  static Future<void> generateAndPrint(Map<String, dynamic> data) async {
+  /// Build PDF and return raw bytes (no auto-print).
+  /// Caller decides what to do — preview, save, share, print.
+  static Future<Uint8List> generateBytes(Map<String, dynamic> data) async {
     await _loadFonts();
 
     final pdf = pw.Document();
@@ -34,10 +36,7 @@ class WaybillPdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'Путевой лист АП №${data['waybillNumber']}',
-    );
+    return pdf.save();
   }
 
   static pw.Widget _buildWaybill(Map<String, dynamic> data) {

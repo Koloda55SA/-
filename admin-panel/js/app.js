@@ -80,13 +80,13 @@ async function updateDashboard() {
             activity.innerHTML = '<p class="empty-text">Нет активности</p>';
         } else {
             activity.innerHTML = recent.slice(0, 5).map(w => `
-                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center">
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);min-width:0">
+                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
                         <i class="fas fa-file-lines" style="color:var(--primary-light);font-size:14px"></i>
                     </div>
-                    <div>
-                        <div style="font-size:13px;font-weight:500">Путевой лист АП №${w.waybillNumber || ''}</div>
-                        <div style="font-size:11px;color:var(--text-light)">${w.driverName || ''} - ${w.date || ''}</div>
+                    <div style="min-width:0;flex:1;overflow:hidden">
+                        <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Путевой лист АП №${w.waybillNumber || ''}</div>
+                        <div style="font-size:11px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.driverName || ''} - ${w.date || ''}</div>
                     </div>
                 </div>
             `).join('');

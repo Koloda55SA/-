@@ -1,8 +1,10 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../services/waybill_pdf_service.dart';
+import 'waybill_preview_screen.dart';
 
 class WaybillScreen extends StatefulWidget {
   final Map<String, dynamic> driverData;
@@ -16,11 +18,58 @@ class WaybillScreen extends StatefulWidget {
 class _WaybillScreenState extends State<WaybillScreen> {
   bool _isGenerating = false;
   final _odometerController = TextEditingController();
-  TimeOfDay _medTime = const TimeOfDay(hour: 6, minute: 10);
-  TimeOfDay _techTime = const TimeOfDay(hour: 6, minute: 29);
-  TimeOfDay _shiftStart = const TimeOfDay(hour: 6, minute: 29);
-  TimeOfDay _departureTime = const TimeOfDay(hour: 6, minute: 42);
-  TimeOfDay _shiftEnd = const TimeOfDay(hour: 18, minute: 10);
+
+  // DateTime objects with full hour:min:sec precision
+  late DateTime _medDt;
+  late DateTime _techDt;
+  late DateTime _shiftStartDt;
+  late DateTime _departureDt;
+  late DateTime _shiftEndDt;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateRealisticTimes();
+  }
+
+  /// Build times based on the phone's current time so that
+  /// the медосмотр looks like it was passed ~20–30 minutes ago,
+  /// then everything cascades realistically.
+  void _generateRealisticTimes() {
+    final now = DateTime.now();
+    final r = Random();
+
+    // Медосмотр: 25–35 минут назад от сейчас
+    _medDt = now.subtract(Duration(
+      minutes: 25 + r.nextInt(11),
+      seconds: r.nextInt(60),
+    ));
+
+    // Техконтроль: через 3–7 минут после медика
+    _techDt = _medDt.add(Duration(
+      minutes: 3 + r.nextInt(5),
+      seconds: r.nextInt(60),
+    ));
+
+    // Начало смены: через 0–2 мин после техконтроля
+    _shiftStartDt = _techDt.add(Duration(
+      minutes: r.nextInt(3),
+      seconds: r.nextInt(60),
+    ));
+
+    // Выезд с парковки: через 5–15 мин после начала смены
+    _departureDt = _shiftStartDt.add(Duration(
+      minutes: 5 + r.nextInt(11),
+      seconds: r.nextInt(60),
+    ));
+
+    // Окончание смены: 11–13 часов после начала
+    _shiftEndDt = _shiftStartDt.add(Duration(
+      hours: 11 + r.nextInt(3),
+      minutes: r.nextInt(60),
+      seconds: r.nextInt(60),
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,11 +139,19 @@ class _WaybillScreenState extends State<WaybillScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _timePickerTile('Мед. осмотр', _medTime, (t) => setState(() => _medTime = t)),
-                    _timePickerTile('Тех. контроль', _techTime, (t) => setState(() => _techTime = t)),
-                    _timePickerTile('Начало смены', _shiftStart, (t) => setState(() => _shiftStart = t)),
-                    _timePickerTile('Выезд с парковки', _departureTime, (t) => setState(() => _departureTime = t)),
-                    _timePickerTile('Окончание смены', _shiftEnd, (t) => setState(() => _shiftEnd = t)),
+                    _timeRow('Мед. осмотр', _medDt, (dt) => setState(() => _medDt = dt)),
+                    _timeRow('Тех. контроль', _techDt, (dt) => setState(() => _techDt = dt)),
+                    _timeRow('Начало смены', _shiftStartDt, (dt) => setState(() => _shiftStartDt = dt)),
+                    _timeRow('Выезд с парковки', _departureDt, (dt) => setState(() => _departureDt = dt)),
+                    _timeRow('Окончание смены', _shiftEndDt, (dt) => setState(() => _shiftEndDt = dt)),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () => setState(() => _generateRealisticTimes()),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Пересчитать времена от текущего'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -132,7 +189,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
     );
   }
 
-  Widget _timePickerTile(String label, TimeOfDay time, Function(TimeOfDay) onChanged) {
+  Widget _timeRow(String label, DateTime dt, Function(DateTime) onChanged) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(label),
@@ -140,20 +197,31 @@ class _WaybillScreenState extends State<WaybillScreen> {
         onPressed: () async {
           final picked = await showTimePicker(
             context: context,
-            initialTime: time,
+            initialTime: TimeOfDay(hour: dt.hour, minute: dt.minute),
           );
-          if (picked != null) onChanged(picked);
+          if (picked != null) {
+            // Keep seconds, only change hour/minute
+            final r = Random();
+            final newDt = DateTime(
+              dt.year, dt.month, dt.day,
+              picked.hour, picked.minute,
+              r.nextInt(60),
+            );
+            onChanged(newDt);
+          }
         },
         child: Text(
-          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+          _formatHms(dt),
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 
-  String _formatTime(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  static String _formatHms(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:'
+      '${dt.minute.toString().padLeft(2, '0')}:'
+      '${dt.second.toString().padLeft(2, '0')}';
 
   Future<void> _generateWaybill() async {
     if (_odometerController.text.isEmpty) {
@@ -178,7 +246,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
       final waybillNumber = '${now.millisecondsSinceEpoch ~/ 1000}';
 
       // Prepare waybill data
-      final waybillData = {
+      final waybillData = <String, dynamic>{
         'waybillNumber': waybillNumber,
         'date': DateFormat('dd.MM.yyyy').format(now),
         'dateFormatted': '«${DateFormat('dd').format(now)}» ${_getMonthName(now.month)} ${now.year} г.',
@@ -209,11 +277,11 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'permitNumber': settings['permit'] ?? '',
         'mintransOrder': settings['mintrans'] ?? '',
         'odometerStart': _odometerController.text,
-        'medTime': _formatTime(_medTime),
-        'techTime': _formatTime(_techTime),
-        'shiftStart': _formatTime(_shiftStart),
-        'departureTime': _formatTime(_departureTime),
-        'shiftEnd': _formatTime(_shiftEnd),
+        'medTime': _formatHms(_medDt),
+        'techTime': _formatHms(_techDt),
+        'shiftStart': _formatHms(_shiftStartDt),
+        'departureTime': _formatHms(_departureDt),
+        'shiftEnd': _formatHms(_shiftEndDt),
         'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
       };
@@ -221,8 +289,21 @@ class _WaybillScreenState extends State<WaybillScreen> {
       // Save to Firestore
       await FirebaseFirestore.instance.collection('waybills').add(waybillData);
 
-      // Generate and show PDF
-      await WaybillPdfService.generateAndPrint(waybillData);
+      // Generate PDF bytes (without auto-print)
+      final pdfBytes = await WaybillPdfService.generateBytes(waybillData);
+
+      if (!mounted) return;
+
+      // Open preview screen — user picks: view, save, share or print
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WaybillPreviewScreen(
+            pdfBytes: pdfBytes,
+            waybillNumber: waybillNumber,
+          ),
+        ),
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -231,7 +312,6 @@ class _WaybillScreenState extends State<WaybillScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
