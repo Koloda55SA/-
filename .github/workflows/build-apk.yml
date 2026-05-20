@@ -30,23 +30,42 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Initialize Flutter project structure
+      - name: Initialize Flutter project
         run: |
-          # Create a temporary Flutter project to get all boilerplate files
-          flutter create --org com.taxopark --project-name taxopark_driver /tmp/flutter_template
+          # Save our custom source files
+          cp -r mobile-app/lib /tmp/our_lib
+          cp mobile-app/pubspec.yaml /tmp/our_pubspec.yaml
+          cp mobile-app/android/app/google-services.json /tmp/google-services.json
           
-          # Copy missing gradle/wrapper files from template
-          cp -r /tmp/flutter_template/android/gradle/wrapper/* mobile-app/android/gradle/wrapper/ 2>/dev/null || true
-          cp /tmp/flutter_template/android/gradlew mobile-app/android/ 2>/dev/null || true
-          cp /tmp/flutter_template/android/gradlew.bat mobile-app/android/ 2>/dev/null || true
-          chmod +x mobile-app/android/gradlew
+          # Create a proper Flutter project in mobile-app directory
+          rm -rf mobile-app
+          flutter create --org com.taxopark --project-name taxopark_driver mobile-app
           
-          # Copy missing resource files (icons) if needed
-          for dir in mipmap-hdpi mipmap-mdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
-            if [ ! -f "mobile-app/android/app/src/main/res/$dir/ic_launcher.png" ]; then
-              cp -r /tmp/flutter_template/android/app/src/main/res/$dir/* mobile-app/android/app/src/main/res/$dir/ 2>/dev/null || true
-            fi
-          done
+          # Restore our custom source files
+          rm -rf mobile-app/lib
+          cp -r /tmp/our_lib mobile-app/lib
+          cp /tmp/our_pubspec.yaml mobile-app/pubspec.yaml
+          cp /tmp/google-services.json mobile-app/android/app/google-services.json
+          
+          # Add Google Services plugin to android/build.gradle
+          cd mobile-app/android
+          
+          # Update settings.gradle to include google-services
+          sed -i 's/id "com.android.application" version .* apply false/id "com.android.application" version "8.1.4" apply false\n    id "com.google.gms.google-services" version "4.4.0" apply false/' settings.gradle
+          
+          # Update app/build.gradle
+          cd app
+          # Add google-services plugin
+          sed -i '/id "com.android.application"/a\    id "com.google.gms.google-services"' build.gradle
+          # Add Firebase BOM dependency
+          sed -i '/dependencies {/a\    implementation platform("com.google.firebase:firebase-bom:32.7.0")\n    implementation "com.google.firebase:firebase-analytics"' build.gradle
+          # Set applicationId
+          sed -i 's/namespace "com.taxopark.taxopark_driver"/namespace "com.taxopark.driver"/' build.gradle
+          sed -i 's/applicationId "com.taxopark.taxopark_driver"/applicationId "com.taxopark.driver"/' build.gradle
+          # Enable multidex
+          sed -i '/minSdk/a\        multiDexEnabled true' build.gradle
+          
+          cd ../../..
 
       - name: Get dependencies
         working-directory: mobile-app
