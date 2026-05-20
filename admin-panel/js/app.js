@@ -14,10 +14,29 @@ function showSection(sectionName) {
         'settings': 'Настройки'
     };
     document.getElementById('page-title').textContent = titles[sectionName] || '';
+    // Auto-close sidebar on mobile after navigation
+    if (window.innerWidth <= 1024) closeSidebar();
 }
 
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('sidebar-open');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const isOpen = sidebar.classList.contains('sidebar-open');
+    if (isOpen) {
+        closeSidebar();
+    } else {
+        sidebar.classList.add('sidebar-open');
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    sidebar.classList.remove('sidebar-open');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
 }
 
 function showToast(message, type = 'success') {
