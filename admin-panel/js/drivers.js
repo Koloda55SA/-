@@ -75,25 +75,19 @@ const Drivers = {
         const commType = document.getElementById('driver-comm-type').value;
 
         try {
-            // Create Firebase Auth account for driver
-            const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: email,
-                    password: password,
-                    returnSecureToken: false
-                })
-            });
+            // Create driver account using secondary Firebase app
+            // This prevents signing out the current admin
+            const secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary_' + Date.now());
+            const secondaryAuth = secondaryApp.auth();
 
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error.message);
-            }
+            const userCredential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+            const driverUid = userCredential.user.uid;
 
-            const driverUid = data.localId;
+            // Sign out from secondary and delete it
+            await secondaryAuth.signOut();
+            await secondaryApp.delete();
 
-            // Save driver data to Firestore
+            // Save driver data to Firestore (using main app's db)
             await db.collection('drivers').doc(driverUid).set({
                 fullName,
                 phone,
@@ -124,10 +118,12 @@ const Drivers = {
         } catch (error) {
             console.error('Error adding driver:', error);
             let msg = 'Ошибка при регистрации водителя';
-            if (error.message.includes('EMAIL_EXISTS')) {
+            if (error.code === 'auth/email-already-in-use') {
                 msg = 'Этот email уже используется';
-            } else if (error.message.includes('WEAK_PASSWORD')) {
+            } else if (error.code === 'auth/weak-password') {
                 msg = 'Слишком простой пароль (мин. 6 символов)';
+            } else if (error.code === 'auth/invalid-email') {
+                msg = 'Некорректный email';
             }
             showToast(msg, 'error');
         }

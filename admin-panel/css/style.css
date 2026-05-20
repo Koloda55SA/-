@@ -187,11 +187,11 @@ tr:hover td { background: var(--card-hover); }
 
 /* SIDEBAR OVERLAY (mobile) */
 .sidebar-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
     z-index: 99; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-    opacity: 0; transition: opacity 0.3s;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
 }
-.sidebar-overlay.active { display: block; opacity: 1; }
+.sidebar-overlay.active { opacity: 1; pointer-events: auto; }
 
 /* TABLE RESPONSIVE WRAPPER */
 .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
