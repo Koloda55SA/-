@@ -439,76 +439,65 @@ class WaybillPdfService {
     required String signerIssued,
     required String signerExpires,
   }) {
-    return pw.IntrinsicHeight(
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
+    return pw.Table(
+      border: pw.TableBorder.all(width: 0.6),
+      columnWidths: const {
+        0: pw.FlexColumnWidth(28),
+        1: pw.FlexColumnWidth(11),
+        2: pw.FlexColumnWidth(11),
+        3: pw.FlexColumnWidth(35),
+      },
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(children: [
           // Левая: зеленый фон с описанием
-          pw.Expanded(
-            flex: 28,
-            child: pw.Container(
-              color: _green,
-              padding: const pw.EdgeInsets.all(4),
-              decoration: pw.BoxDecoration(
-                color: _green,
-                border: pw.Border.all(width: 0.6),
-              ),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                mainAxisAlignment: pw.MainAxisAlignment.start,
-                children: [
-                  pw.Text(title,
-                      style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold)),
-                  pw.Spacer(),
-                  if (subText.isNotEmpty)
-                    pw.Text(subText,
+          pw.Container(
+            color: _green,
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(title,
+                    style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold)),
+                if (subText.isNotEmpty)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 4),
+                    child: pw.Text(subText,
                         style: const pw.TextStyle(fontSize: 6, color: _grey)),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
           // Дата
-          pw.Expanded(
-            flex: 11,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.Center(
-                child: pw.Text(date,
-                    style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
-              ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Center(
+              child: pw.Text(date,
+                  style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
           // Время
-          pw.Expanded(
-            flex: 11,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.Center(
-                child: pw.Text(time,
-                    style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
-              ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Center(
+              child: pw.Text(time,
+                  style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
           // Электронная подпись
-          pw.Expanded(
-            flex: 35,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(3),
-              child: _eSignBox(
-                label: signerLabel,
-                name: signerName,
-                date: date,
-                time: time,
-                issued: signerIssued,
-                expires: signerExpires,
-              ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(3),
+            child: _eSignBox(
+              label: signerLabel,
+              name: signerName,
+              date: date,
+              time: time,
+              issued: signerIssued,
+              expires: signerExpires,
             ),
           ),
-        ],
-      ),
+        ]),
+      ],
     );
   }
 
@@ -586,65 +575,67 @@ class WaybillPdfService {
 
   // ============== 7. Начало смены + "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН" ==============
   static pw.Widget _shiftStartAndRelease(Map<String, dynamic> d) {
-    return pw.IntrinsicHeight(
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Expanded(
-            flex: 5,
-            child: pw.Table(
-              border: pw.TableBorder.all(width: 0.6),
-              columnWidths: const {
-                0: pw.FlexColumnWidth(3),
-                1: pw.FlexColumnWidth(2),
-                2: pw.FlexColumnWidth(2),
-              },
+    return pw.Table(
+      columnWidths: const {
+        0: pw.FlexColumnWidth(5),
+        1: pw.FixedColumnWidth(4),
+        2: pw.FlexColumnWidth(2),
+      },
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(children: [
+          // Левая часть — таблица смены
+          pw.Table(
+            border: pw.TableBorder.all(width: 0.6),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(3),
+              1: pw.FlexColumnWidth(2),
+              2: pw.FlexColumnWidth(2),
+            },
+            children: [
+              pw.TableRow(children: [
+                _cellLabel('Начало смены'),
+                _cellValue(_v(d, 'date')),
+                _cellValue(_v(d, 'shiftStart'), bold: true),
+              ]),
+              pw.TableRow(children: [
+                _cellLabel('Выезд с парковки'),
+                _cellValue(_v(d, 'date')),
+                _cellValue(_v(d, 'departureTime'), bold: true),
+              ]),
+              pw.TableRow(children: [
+                _cellLabel('Показание одометра км'),
+                pw.Padding(
+                  padding: const pw.EdgeInsets.all(3),
+                  child: pw.Text(_v(d, 'odometerStart'),
+                      style: pw.TextStyle(
+                          fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                ),
+                _cellValue(''),
+              ]),
+            ],
+          ),
+          // Разделитель
+          pw.SizedBox(),
+          // Правая часть — "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН"
+          pw.Container(
+            decoration: pw.BoxDecoration(border: pw.Border.all(width: 1.4)),
+            padding: const pw.EdgeInsets.all(8),
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
               children: [
-                pw.TableRow(children: [
-                  _cellLabel('Начало смены'),
-                  _cellValue(_v(d, 'date')),
-                  _cellValue(_v(d, 'shiftStart'), bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _cellLabel('Выезд с парковки'),
-                  _cellValue(_v(d, 'date')),
-                  _cellValue(_v(d, 'departureTime'), bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _cellLabel('Показание одометра км'),
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(3),
-                    child: pw.Text(_v(d, 'odometerStart'),
-                        style: pw.TextStyle(
-                            fontSize: 11, fontWeight: pw.FontWeight.bold)),
-                  ),
-                  _cellValue(''),
-                ]),
+                pw.Text('ВЫПУСК НА ЛИНИЮ',
+                    style: pw.TextStyle(
+                        fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 4),
+                pw.Text('РАЗРЕШЕН',
+                    style: pw.TextStyle(
+                        fontSize: 16, fontWeight: pw.FontWeight.bold)),
               ],
             ),
           ),
-          pw.SizedBox(width: 4),
-          pw.Expanded(
-            flex: 2,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 1.4)),
-              padding: const pw.EdgeInsets.all(6),
-              child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                children: [
-                  pw.Text('ВЫПУСК НА ЛИНИЮ',
-                      style: pw.TextStyle(
-                          fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
-                  pw.SizedBox(height: 4),
-                  pw.Text('РАЗРЕШЕН',
-                      style: pw.TextStyle(
-                          fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ]),
+      ],
     );
   }
 
@@ -727,46 +718,37 @@ class WaybillPdfService {
 
   // ============== 11. Послерейсовый осмотр ==============
   static pw.Widget _postTripExam(String title) {
-    return pw.IntrinsicHeight(
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Expanded(
-            flex: 28,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(
-                color: _green,
-                border: pw.Border.all(width: 0.6),
-              ),
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.Text(title,
-                  style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold)),
-            ),
+    return pw.Table(
+      border: pw.TableBorder.all(width: 0.6),
+      columnWidths: const {
+        0: pw.FlexColumnWidth(28),
+        1: pw.FlexColumnWidth(11),
+        2: pw.FlexColumnWidth(11),
+        3: pw.FlexColumnWidth(35),
+      },
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(children: [
+          pw.Container(
+            color: _green,
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Text(title,
+                style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold)),
           ),
-          pw.Expanded(
-            flex: 11,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.SizedBox(height: 26),
-            ),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.SizedBox(height: 26),
           ),
-          pw.Expanded(
-            flex: 11,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(4),
-            ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.SizedBox(),
           ),
-          pw.Expanded(
-            flex: 35,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6)),
-              padding: const pw.EdgeInsets.all(4),
-            ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.SizedBox(),
           ),
-        ],
-      ),
+        ]),
+      ],
     );
   }
 
