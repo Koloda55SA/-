@@ -37,14 +37,14 @@ const Drivers = {
         
         return `
             <tr>
-                <td><strong>${driver.fullName || ''}</strong></td>
-                <td>${driver.phone || ''}</td>
-                <td>${driver.carModel || ''}</td>
-                <td>${driver.plateNumber || ''}</td>
-                <td>${status}</td>
-                <td>
+                <td data-label="Водитель"><strong>${driver.fullName || ''}</strong></td>
+                <td data-label="Телефон">${driver.phone || ''}</td>
+                <td data-label="Авто">${driver.carModel || ''}</td>
+                <td data-label="Гос. номер">${driver.plateNumber || ''}</td>
+                <td data-label="Статус">${status}</td>
+                <td data-label="Действия">
                     <button class="btn btn-sm btn-primary" onclick="Drivers.toggleStatus('${driver.id}', ${driver.active !== false})">
-                        ${driver.active !== false ? 'Деактивировать' : 'Активировать'}
+                        <i class="fas fa-power-off"></i> ${driver.active !== false ? 'Деактив.' : 'Активир.'}
                     </button>
                     <button class="btn btn-sm btn-danger" onclick="Drivers.deleteDriver('${driver.id}')">
                         <i class="fas fa-trash"></i>

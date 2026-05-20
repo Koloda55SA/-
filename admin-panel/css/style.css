@@ -31,6 +31,38 @@ input, select, textarea, button { max-width: 100%; }
 .page { display: none; }
 .page.active { display: block; }
 
+/* LOADING SCREEN */
+#loading-page { background: var(--bg); }
+.loading-container {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px; padding: 24px;
+}
+.loading-logo {
+    width: 80px; height: 80px; border-radius: 20px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 32px var(--glow);
+    animation: logoPulse 1.6s ease-in-out infinite;
+}
+.loading-logo i { font-size: 36px; color: white; }
+.loading-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(99,102,241,0.2);
+    border-top-color: var(--primary-light);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.loading-text {
+    font-size: 20px; font-weight: 800; letter-spacing: 0.5px;
+    background: linear-gradient(135deg, var(--primary-light), #c084fc);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+@keyframes logoPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 8px 32px var(--glow); }
+    50% { transform: scale(1.05); box-shadow: 0 12px 48px rgba(99,102,241,0.5); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* LOGIN */
 .login-container {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -253,14 +285,64 @@ tr:hover td { background: var(--card-hover); }
     .section-header h3 { font-size: 18px; }
     .card-header { padding: 14px 16px; }
     .card-body { padding: 14px 16px; }
-    /* Table: keep min-width but rely on .table-container scroll */
-    table { min-width: 540px; }
-    th, td { padding: 10px 12px; font-size: 12px; white-space: nowrap; }
+
     /* Bigger touch targets */
-    .btn { padding: 11px 18px; font-size: 14px; min-height: 44px; }
-    .btn-sm { padding: 9px 14px; font-size: 12px; min-height: 36px; }
-    .form-group input, .form-group select { padding: 13px 14px; font-size: 15px; min-height: 46px; }
-    .sidebar-menu li { padding: 14px 16px; font-size: 15px; }
+    .btn { padding: 12px 18px; font-size: 14px; min-height: 48px; }
+    .btn-sm { padding: 10px 16px; font-size: 13px; min-height: 42px; }
+    .form-group input, .form-group select { padding: 14px 16px; font-size: 16px; min-height: 48px; }
+    .sidebar-menu li { padding: 14px 16px; font-size: 15px; min-height: 48px; }
+
+    /* TABLES → CARDS на мобильных (без горизонтальной прокрутки) */
+    .table-container { background: transparent; border: none; overflow: visible; }
+    table, thead, tbody, th, td, tr { display: block; }
+    thead { display: none; } /* Скрываем шапку таблицы */
+    tr {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    tr:hover td { background: transparent; }
+    td {
+        border: none;
+        padding: 4px 0;
+        font-size: 14px;
+        white-space: normal;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--text-light);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+    }
+    /* Кнопки действий в карточке — на всю ширину снизу */
+    td:last-child {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+        margin-top: 6px;
+    }
+    td:last-child::before { display: none; }
+    td:last-child .btn { flex: 1; min-width: 0; justify-content: center; }
+
+    /* Пустые строки таблицы (без data-label) */
+    td[colspan] { justify-content: center; text-align: center; padding: 24px 12px !important; }
+    td[colspan]::before { display: none; }
+    td[colspan] { border-top: none !important; margin-top: 0 !important; padding-top: 24px !important; }
 }
 
 /* Small phones (portrait) */

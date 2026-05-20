@@ -23,12 +23,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDriverData() async {
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
       final doc = await FirebaseFirestore.instance
           .collection('drivers')
-          .doc(uid)
+          .doc(user.uid)
           .get();
-      
+
+      if (!mounted) return;
       if (doc.exists) {
         setState(() {
           _driverData = doc.data();
@@ -38,7 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      debugPrint('Driver data load error: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -173,10 +179,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 60,
                     child: ElevatedButton.icon(
                       onPressed: () {
+                        final data = _driverData;
+                        if (data == null) return;
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => WaybillScreen(driverData: _driverData!),
+                            builder: (_) => WaybillScreen(driverData: data),
                           ),
                         );
                       },
@@ -234,8 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showHistory(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -263,10 +273,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     .limit(20)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final docs = snapshot.data!.docs;
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Ошибка загрузки: ${snapshot.error}',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  }
+                  final docs = snapshot.data?.docs ?? [];
                   if (docs.isEmpty) {
                     return const Center(
                       child: Text('Нет путевых листов'),
@@ -276,11 +297,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: scrollController,
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
-                      final data = docs[index].data() as Map<String, dynamic>;
+                      final raw = docs[index].data();
+                      final data = raw is Map<String, dynamic>
+                          ? raw
+                          : <String, dynamic>{};
                       return ListTile(
                         leading: const Icon(Icons.description),
                         title: Text('АП №${data['waybillNumber'] ?? ''}'),
-                        subtitle: Text(data['date'] ?? ''),
+                        subtitle: Text(data['date']?.toString() ?? ''),
                         trailing: const Icon(Icons.chevron_right),
                       );
                     },

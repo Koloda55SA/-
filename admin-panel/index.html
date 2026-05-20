@@ -9,8 +9,19 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
+    <!-- Loading Page (показывается мгновенно пока Firebase проверяет auth) -->
+    <div id="loading-page" class="page active">
+        <div class="loading-container">
+            <div class="loading-logo">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <div class="loading-spinner"></div>
+            <p class="loading-text">AsemPro</p>
+        </div>
+    </div>
+
     <!-- Login Page -->
-    <div id="login-page" class="page active">
+    <div id="login-page" class="page">
         <div class="login-container">
             <div class="login-bg-shapes">
                 <div class="shape shape-1"></div>
@@ -374,6 +385,51 @@
                             <input type="text" id="setting-mintrans" placeholder="390 ОТ 28.09.2022">
                         </div>
                     </div>
+
+                    <div class="form-section-title"><i class="fas fa-user-doctor"></i> Медицинский работник</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ФИО мед. работника</label>
+                            <input type="text" id="setting-med-name" placeholder="Зайцева Ирина Владимировна">
+                        </div>
+                        <div class="form-group">
+                            <label>Номер сертификата (ЛО)</label>
+                            <input type="text" id="setting-med-cert" placeholder="ЛО-77-01-01-5309">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Дата выдачи сертификата</label>
+                            <input type="date" id="setting-med-issued">
+                        </div>
+                        <div class="form-group">
+                            <label>Действителен до</label>
+                            <input type="date" id="setting-med-expires">
+                        </div>
+                    </div>
+
+                    <div class="form-section-title"><i class="fas fa-wrench"></i> Контролёр тех. состояния</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ФИО тех. контролёра</label>
+                            <input type="text" id="setting-tech-name" placeholder="Крепких Сергей Анатольевич">
+                        </div>
+                        <div class="form-group">
+                            <label>Номер сертификата</label>
+                            <input type="text" id="setting-tech-cert" placeholder="СМ079-465-368-3658">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Дата выдачи сертификата</label>
+                            <input type="date" id="setting-tech-issued">
+                        </div>
+                        <div class="form-group">
+                            <label>Действителен до</label>
+                            <input type="date" id="setting-tech-expires">
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary btn-glow">
                         <i class="fas fa-check-circle"></i> Сохранить настройки
                     </button>

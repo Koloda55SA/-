@@ -19,7 +19,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
   bool _isGenerating = false;
   final _odometerController = TextEditingController();
 
-  // DateTime objects with full hour:min:sec precision
+  // DateTime объекты с полной precision (час:мин:сек)
   late DateTime _medDt;
   late DateTime _techDt;
   late DateTime _shiftStartDt;
@@ -32,38 +32,28 @@ class _WaybillScreenState extends State<WaybillScreen> {
     _generateRealisticTimes();
   }
 
-  /// Build times based on the phone's current time so that
-  /// the медосмотр looks like it was passed ~20–30 minutes ago,
-  /// then everything cascades realistically.
+  /// Строим времена от текущего момента телефона:
+  /// медосмотр прошёл ~25-35 мин назад, дальше всё каскадом реалистично.
   void _generateRealisticTimes() {
     final now = DateTime.now();
     final r = Random();
 
-    // Медосмотр: 25–35 минут назад от сейчас
     _medDt = now.subtract(Duration(
       minutes: 25 + r.nextInt(11),
       seconds: r.nextInt(60),
     ));
-
-    // Техконтроль: через 3–7 минут после медика
     _techDt = _medDt.add(Duration(
       minutes: 3 + r.nextInt(5),
       seconds: r.nextInt(60),
     ));
-
-    // Начало смены: через 0–2 мин после техконтроля
     _shiftStartDt = _techDt.add(Duration(
       minutes: r.nextInt(3),
       seconds: r.nextInt(60),
     ));
-
-    // Выезд с парковки: через 5–15 мин после начала смены
     _departureDt = _shiftStartDt.add(Duration(
       minutes: 5 + r.nextInt(11),
       seconds: r.nextInt(60),
     ));
-
-    // Окончание смены: 11–13 часов после начала
     _shiftEndDt = _shiftStartDt.add(Duration(
       hours: 11 + r.nextInt(3),
       minutes: r.nextInt(60),
@@ -104,12 +94,12 @@ class _WaybillScreenState extends State<WaybillScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Водитель: ${widget.driverData['fullName']}',
+                      'Водитель: ${widget.driverData['fullName'] ?? ''}',
                       style: const TextStyle(fontSize: 15),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Авто: ${widget.driverData['carModel']} (${widget.driverData['plateNumber']})',
+                      'Авто: ${widget.driverData['carModel'] ?? ''} (${widget.driverData['plateNumber'] ?? ''})',
                       style: const TextStyle(fontSize: 15),
                     ),
                   ],
@@ -147,7 +137,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
                     const SizedBox(height: 8),
                     Center(
                       child: TextButton.icon(
-                        onPressed: () => setState(() => _generateRealisticTimes()),
+                        onPressed: () => setState(_generateRealisticTimes),
                         icon: const Icon(Icons.refresh, size: 18),
                         label: const Text('Пересчитать времена от текущего'),
                       ),
@@ -200,7 +190,6 @@ class _WaybillScreenState extends State<WaybillScreen> {
             initialTime: TimeOfDay(hour: dt.hour, minute: dt.minute),
           );
           if (picked != null) {
-            // Keep seconds, only change hour/minute
             final r = Random();
             final newDt = DateTime(
               dt.year, dt.month, dt.day,
@@ -224,59 +213,83 @@ class _WaybillScreenState extends State<WaybillScreen> {
       '${dt.second.toString().padLeft(2, '0')}';
 
   Future<void> _generateWaybill() async {
-    if (_odometerController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите показание одометра')),
-      );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _showError('Сессия истекла. Войдите снова.');
+      return;
+    }
+    if (_odometerController.text.trim().isEmpty) {
+      _showError('Введите показание одометра');
       return;
     }
 
     setState(() => _isGenerating = true);
 
     try {
-      // Get company settings
+      // Получаем настройки компании
       final settingsDoc = await FirebaseFirestore.instance
           .collection('settings')
           .doc('company')
           .get();
-      final settings = settingsDoc.data() ?? {};
+      final settings = settingsDoc.data() ?? <String, dynamic>{};
 
-      // Generate waybill number
+      // Генерируем уникальный номер путевого листа
       final now = DateTime.now();
       final waybillNumber = '${now.millisecondsSinceEpoch ~/ 1000}';
 
-      // Prepare waybill data
+      // Помощник: безопасно достать строку
+      String s(Map<String, dynamic> m, String key) {
+        final v = m[key];
+        return v == null ? '' : v.toString();
+      }
+
+      final driver = widget.driverData;
+
       final waybillData = <String, dynamic>{
         'waybillNumber': waybillNumber,
         'date': DateFormat('dd.MM.yyyy').format(now),
-        'dateFormatted': '«${DateFormat('dd').format(now)}» ${_getMonthName(now.month)} ${now.year} г.',
-        'driverId': FirebaseAuth.instance.currentUser!.uid,
-        'driverName': widget.driverData['fullName'] ?? '',
-        'driverPhone': widget.driverData['phone'] ?? '',
-        'carModel': widget.driverData['carModel'] ?? '',
-        'plateNumber': widget.driverData['plateNumber'] ?? '',
-        'license': widget.driverData['license'] ?? '',
-        'licenseClass': widget.driverData['licenseClass'] ?? '',
-        'licenseIssued': widget.driverData['licenseIssued'] ?? '',
-        'licenseExpires': widget.driverData['licenseExpires'] ?? '',
-        'driverIdNumber': widget.driverData['driverIdNumber'] ?? '',
-        'osgop': widget.driverData['osgop'] ?? '',
-        'garageNumber': widget.driverData['garageNumber'] ?? '',
-        'tabNumber': widget.driverData['tabNumber'] ?? '',
-        'snils': widget.driverData['snils'] ?? '',
-        'driverInn': widget.driverData['inn'] ?? '',
-        'transportType': widget.driverData['transportType'] ?? '',
-        'commType': widget.driverData['commType'] ?? '',
-        'orgName': settings['orgName'] ?? '',
-        'orgAddress': settings['address'] ?? '',
-        'ogrn': settings['ogrn'] ?? '',
-        'orgInn': settings['inn'] ?? '',
-        'orgPhone': settings['phone'] ?? '',
-        'okud': settings['okud'] ?? '0345001',
-        'okpo': settings['okpo'] ?? '',
-        'permitNumber': settings['permit'] ?? '',
-        'mintransOrder': settings['mintrans'] ?? '',
-        'odometerStart': _odometerController.text,
+        'dateFormatted':
+            '«${DateFormat('dd').format(now)}» ${_getMonthName(now.month)} ${now.year} г.',
+        'driverId': user.uid,
+        'driverName': s(driver, 'fullName'),
+        'driverPhone': s(driver, 'phone'),
+        'carModel': s(driver, 'carModel'),
+        'plateNumber': s(driver, 'plateNumber'),
+        'license': s(driver, 'license'),
+        'licenseClass': s(driver, 'licenseClass'),
+        'licenseIssued': s(driver, 'licenseIssued'),
+        'licenseExpires': s(driver, 'licenseExpires'),
+        'driverIdNumber': s(driver, 'driverIdNumber'),
+        'osgop': s(driver, 'osgop'),
+        'garageNumber': s(driver, 'garageNumber'),
+        'tabNumber': s(driver, 'tabNumber'),
+        'snils': s(driver, 'snils'),
+        'driverInn': s(driver, 'inn'),
+        'transportType': s(driver, 'transportType'),
+        'commType': s(driver, 'commType'),
+        // Из настроек компании
+        'orgName': s(settings, 'orgName'),
+        'orgAddress': s(settings, 'address'),
+        'ogrn': s(settings, 'ogrn'),
+        'orgInn': s(settings, 'inn'),
+        'orgPhone': s(settings, 'phone'),
+        'okud': s(settings, 'okud').isEmpty ? '0345001' : s(settings, 'okud'),
+        'okpo': s(settings, 'okpo'),
+        'permitNumber': s(settings, 'permit'),
+        'mintransOrder': s(settings, 'mintrans').isEmpty
+            ? '390 ОТ 28.09.2022'
+            : s(settings, 'mintrans'),
+        // Электронные подписи
+        'medName': s(settings, 'medName'),
+        'medCert': s(settings, 'medCert'),
+        'medIssued': s(settings, 'medIssued'),
+        'medExpires': s(settings, 'medExpires'),
+        'techName': s(settings, 'techName'),
+        'techCert': s(settings, 'techCert'),
+        'techIssued': s(settings, 'techIssued'),
+        'techExpires': s(settings, 'techExpires'),
+        // Времена
+        'odometerStart': _odometerController.text.trim(),
         'medTime': _formatHms(_medDt),
         'techTime': _formatHms(_techDt),
         'shiftStart': _formatHms(_shiftStartDt),
@@ -286,15 +299,15 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       };
 
-      // Save to Firestore
+      // Сохраняем в Firestore
       await FirebaseFirestore.instance.collection('waybills').add(waybillData);
 
-      // Generate PDF bytes (without auto-print)
+      // Генерируем PDF
       final pdfBytes = await WaybillPdfService.generateBytes(waybillData);
 
       if (!mounted) return;
 
-      // Open preview screen — user picks: view, save, share or print
+      // Открываем превью с кнопками
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -313,18 +326,21 @@ class _WaybillScreenState extends State<WaybillScreen> {
           ),
         );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    } on FirebaseException catch (e) {
+      _showError('Ошибка Firebase: ${e.message ?? e.code}');
+    } catch (e, st) {
+      debugPrint('Ошибка генерации путевого листа: $e\n$st');
+      _showError('Не удалось сгенерировать: $e');
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+    );
   }
 
   String _getMonthName(int month) {

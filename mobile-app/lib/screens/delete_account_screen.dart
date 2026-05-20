@@ -58,8 +58,21 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
     try {
       // Re-authenticate user before deletion
+      final email = user.email;
+      if (email == null || email.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Email пользователя не найден'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isDeleting = false);
+        return;
+      }
       final credential = EmailAuthProvider.credential(
-        email: user.email!,
+        email: email,
         password: _passwordController.text,
       );
       await user.reauthenticateWithCredential(credential);

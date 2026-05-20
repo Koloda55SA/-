@@ -35,11 +35,11 @@ const Waybills = {
         
         return `
             <tr>
-                <td><strong>АП №${waybill.waybillNumber || ''}</strong></td>
-                <td>${waybill.driverName || ''}</td>
-                <td>${date}</td>
-                <td>${status}</td>
-                <td>
+                <td data-label="Номер"><strong>АП №${waybill.waybillNumber || ''}</strong></td>
+                <td data-label="Водитель">${waybill.driverName || ''}</td>
+                <td data-label="Дата">${date}</td>
+                <td data-label="Статус">${status}</td>
+                <td data-label="Действия">
                     <button class="btn btn-sm btn-primary" onclick="Waybills.viewWaybill('${waybill.id}')">
                         <i class="fas fa-eye"></i> Просмотр
                     </button>
@@ -58,119 +58,245 @@ const Waybills = {
         printWindow.document.close();
     },
 
-    generateWaybillHTML(waybill) {
+    formatShortDate(s) {
+        if (!s) return '';
+        const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return s;
+        return `${m[3]}.${m[2]}.${m[1]}`;
+    },
+
+    signatureScribble(name) {
+        if (!name) return '~';
+        const parts = String(name).trim().split(/\s+/);
+        const first = parts[0]?.[0] || '';
+        const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+        return `${first}.${last}~~`;
+    },
+
+    eSignBlock(label, name, date, time, issued, expires) {
+        return `
+            <div class="esign">
+                <div class="esign-header">
+                    <div class="esign-dot"></div>
+                    <div><b>Документ подписан</b><br><b>электронной подписью</b></div>
+                </div>
+                <div class="esign-label">${label}:</div>
+                <div class="esign-name">${name || ''}</div>
+                <div class="esign-meta">Дата подписи: ${date || ''} ${time || ''}</div>
+                ${(issued || expires) ? `<div class="esign-meta">Действителен: ${Waybills.formatShortDate(issued)} - ${Waybills.formatShortDate(expires)}</div>` : ''}
+            </div>
+        `;
+    },
+
+    generateWaybillHTML(w) {
+        const qrData = btoa(unescape(encodeURIComponent(
+            `n:${w.waybillNumber}|d:${w.date}|org:${w.orgName||''}|drv:${w.driverName||''}|p:${w.plateNumber||''}`
+        )));
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}`;
+        const sig = Waybills.signatureScribble(w.driverName);
+
         return `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Путевой лист АП №${waybill.waybillNumber}</title>
+    <title>ЭПЛ АП №${w.waybillNumber}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Times New Roman', serif; font-size: 11px; padding: 20px; }
-        .header { text-align: center; margin-bottom: 10px; }
-        .header h1 { font-size: 14px; font-weight: bold; }
-        .waybill-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        .waybill-table td, .waybill-table th { border: 1px solid #000; padding: 4px 6px; font-size: 10px; }
-        .no-border td { border: none; }
-        .section-title { background: #e8f4e8; font-weight: bold; padding: 6px; border: 1px solid #000; margin: 8px 0 4px; }
-        .right-block { float: right; width: 200px; border: 1px solid #000; padding: 8px; text-align: center; }
-        .stamp-block { border: 2px solid #4a90d9; padding: 10px; margin: 5px 0; background: #f0f7ff; }
-        .clearfix::after { content: ''; display: table; clear: both; }
-        @media print { body { padding: 10px; } }
+        body { font-family: Arial, sans-serif; font-size: 10px; padding: 16px; color: #000; background: #fff; }
+        .epl-title { text-align: center; font-size: 18px; font-weight: bold; color: #666; margin-bottom: 4px; }
+        .header-row { display: flex; gap: 12px; margin-bottom: 6px; }
+        .title-block { flex: 4; }
+        .title-block .pl-line { display: flex; align-items: baseline; gap: 6px; }
+        .title-block .pl-line .label { font-size: 9px; }
+        .title-block .pl-line .number { font-size: 12px; font-weight: bold; }
+        .title-block .subtitle { font-size: 8px; color: #666; margin-left: 10px; }
+        .title-block .date-line { font-size: 9px; margin-top: 3px; }
+        .mintrans-ref { flex: 3; text-align: right; font-size: 7px; }
+        table { width: 100%; border-collapse: collapse; }
+        td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; vertical-align: top; }
+        .lbl { font-size: 7px; color: #666; }
+        .val { font-size: 9px; font-weight: bold; }
+        .org-table td { vertical-align: top; }
+        .codes-header { background: #f3f3f3; text-align: center; font-weight: bold; font-size: 8px; padding: 2px; }
+        .codes-row { display: flex; justify-content: space-between; padding: 1px 4px; border-bottom: 1px solid #ccc; font-size: 7px; }
+        .codes-row .v { font-weight: bold; }
+        .green-bg { background: #d9ead3; }
+        .esign { background: #e8f0fe; border: 1px solid #4a90d9; padding: 4px 6px; font-size: 7px; line-height: 1.25; }
+        .esign-header { display: flex; gap: 4px; align-items: center; color: #4a90d9; font-weight: bold; font-size: 7px; }
+        .esign-dot { width: 7px; height: 7px; border-radius: 50%; background: #4a90d9; flex-shrink: 0; }
+        .esign-label { color: #666; margin-top: 2px; font-size: 6.5px; }
+        .esign-name { font-weight: bold; font-size: 8px; }
+        .esign-meta { font-size: 6.5px; color: #555; }
+        .release { border: 2px solid #000; padding: 8px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .release .small { font-size: 10px; font-weight: bold; }
+        .release .big { font-size: 16px; font-weight: bold; }
+        .memo { font-size: 7px; margin: 6px 0; }
+        .memo b { font-size: 7px; }
+        .signature { font-family: 'Brush Script MT', cursive; font-size: 18px; color: #1a4e8e; font-style: italic; }
+        .work-split { text-align: center; font-weight: bold; font-size: 9px; margin: 4px 0; }
+        .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 8px; }
+        .footer .right { text-align: right; }
+        .footer .org { font-size: 10px; font-weight: bold; }
+        .footer .ord { font-size: 8px; }
+        @media print { body { padding: 10px; } @page { size: A4; margin: 8mm; } }
     </style>
 </head>
 <body>
-    <div class="header">
-        <p style="font-size:9px;text-align:right;">ФОРМА ПУТЕВОГО ЛИСТА РАЗРАБОТАНА В СООТВЕТСТВИИ<br>С ПРИКАЗОМ МИНТРАНСА РОССИИ №390 ОТ 28.09.2022 г.</p>
-        <h1>ПУТЕВОЙ ЛИСТ АП № ${waybill.waybillNumber}</h1>
-        <p>легкового такси</p>
-        <p>«${waybill.date || ''}»</p>
+    <div class="epl-title">ЭПЛ</div>
+
+    <div class="header-row">
+        <div class="title-block">
+            <div class="pl-line">
+                <span class="label">путевой лист</span>
+                <span class="number">АП</span>
+                <span class="label">№</span>
+                <span class="number">${w.waybillNumber || ''}</span>
+                <span class="subtitle" style="margin-left:30px">серия</span>
+            </div>
+            <div class="subtitle">легкового такси</div>
+            <div class="date-line">${w.dateFormatted || ('«' + (w.date || '') + '»')}</div>
+        </div>
+        <div class="mintrans-ref">
+            ФОРМА ПУТЕВОГО ЛИСТА РАЗРАБОТАНА В СООТВЕТСТВИИ<br>
+            С ПРИКАЗОМ МИНТРАНСА РОССИИ № ${w.mintransOrder || '390 ОТ 28.09.2022'} г.
+        </div>
     </div>
 
-    <table class="waybill-table">
+    <table class="org-table">
         <tr>
-            <td style="width:60%">
-                <strong>Организация:</strong> ${waybill.orgName || ''}<br>
-                ${waybill.orgAddress || ''}<br>
-                <strong>ОГРН(ИП):</strong> ${waybill.ogrn || ''} <strong>ИНН:</strong> ${waybill.orgInn || ''} Тел.: ${waybill.orgPhone || ''}
+            <td style="width:57%">
+                <div class="lbl">Организация</div>
+                <div class="val">${w.orgName || ''}</div>
+                <div style="font-size:8px">${w.orgAddress || ''}</div>
+                <div style="font-size:8px">ОГРН(ИП): ${w.ogrn || ''}&nbsp;&nbsp;ИНН: ${w.orgInn || ''}&nbsp;&nbsp;Тел.: ${w.orgPhone || ''}</div>
+                <div style="font-size:6px;color:#666">наименование, адрес, ОГРН(ИП), ИНН, номер телефона</div>
             </td>
-            <td>
-                <table class="no-border" style="width:100%">
-                    <tr><td>Форма по ОКУД</td><td>${waybill.okud || '0345001'}</td></tr>
-                    <tr><td>Форма по ОКПО</td><td>${waybill.okpo || ''}</td></tr>
-                    <tr><td>Телефон (вод.)</td><td>${waybill.driverPhone || ''}</td></tr>
-                    <tr><td>СНИЛС (вод.)</td><td>${waybill.snils || ''}</td></tr>
-                    <tr><td>ИНН (вод.)</td><td>${waybill.driverInn || ''}</td></tr>
-                    <tr><td>Гаражный номер</td><td>${waybill.garageNumber || ''}</td></tr>
-                    <tr><td>Табельный номер</td><td>${waybill.tabNumber || ''}</td></tr>
-                </table>
+            <td style="padding:0">
+                <div class="codes-header">Коды</div>
+                <div class="codes-row"><span>Форма по ОКУД</span><span class="v">${w.okud || '0345001'}</span></div>
+                <div class="codes-row"><span>Форма по ОКПО</span><span class="v">${w.okpo || ''}</span></div>
+                <div class="codes-row"><span>Телефон (вод.)</span><span class="v">${w.driverPhone || ''}</span></div>
+                <div class="codes-row"><span>СНИЛС (вод.)</span><span class="v">${w.snils || ''}</span></div>
+                <div class="codes-row"><span>ИНН (вод.)</span><span class="v">${w.driverInn || ''}</span></div>
+                <div class="codes-row"><span>Гаражный номер</span><span class="v">${w.garageNumber || ''}</span></div>
+                <div class="codes-row"><span>Табельный номер</span><span class="v">${w.tabNumber || ''}</span></div>
             </td>
         </tr>
     </table>
 
-    <table class="waybill-table">
-        <tr><td><strong>Марка автомобиля:</strong> ${waybill.carModel || ''}</td></tr>
-        <tr><td><strong>Государственный номерной знак:</strong> ${waybill.plateNumber || ''}</td></tr>
-        <tr><td><strong>Водитель:</strong> ${waybill.driverName || ''}</td></tr>
-        <tr><td><strong>Удостоверение №:</strong> ${waybill.license || ''} <strong>Класс:</strong> ${waybill.licenseClass || ''}</td></tr>
-        <tr><td><strong>Дата выдачи:</strong> ${waybill.licenseIssued || ''} <strong>окончание:</strong> ${waybill.licenseExpires || ''}</td></tr>
-        <tr><td><strong>Перевозка:</strong> ${waybill.transportType || ''}</td></tr>
-        <tr><td><strong>Вид сообщения:</strong> ${waybill.commType || ''}</td></tr>
-        <tr><td><strong>ID ВОДИТЕЛЯ:</strong> ${waybill.driverIdNumber || ''} <strong>ОСГОП:</strong> ${waybill.osgop || ''} <strong>Разрешение №:</strong> ${waybill.permitNumber || ''}</td></tr>
+    <table style="margin-top:3px">
+        <tr>
+            <td><div class="lbl">Марка автомобиля</div><div class="val">${w.carModel || ''}</div></td>
+            <td><div class="lbl">Перевозка</div><div class="val">${w.transportType || ''}</div></td>
+        </tr>
+        <tr>
+            <td><div class="lbl">Государственный номерной знак</div><div class="val">${w.plateNumber || ''}</div></td>
+            <td><div class="lbl">Вид сообщения</div><div class="val">${w.commType || ''}</div></td>
+        </tr>
+        <tr>
+            <td><div class="lbl">Водитель</div><div class="val">${w.driverName || ''}</div><div style="font-size:6px;color:#666">фамилия, имя, отчество</div></td>
+            <td><div class="lbl">Дата выдачи / окончание</div><div class="val">${Waybills.formatShortDate(w.licenseIssued)} / ${Waybills.formatShortDate(w.licenseExpires)}</div></td>
+        </tr>
+        <tr>
+            <td><div class="lbl">Удостоверение №</div><div class="val">${w.license || ''} &nbsp; Класс: ${w.licenseClass || ''}</div></td>
+            <td><div class="lbl">ID ВОДИТЕЛЯ</div><div class="val">${w.driverIdNumber || ''}</div></td>
+        </tr>
+        <tr>
+            <td><div class="lbl">ОСГОП</div><div class="val">${w.osgop || ''}</div></td>
+            <td><div class="lbl">Разрешение №</div><div class="val">${w.permitNumber || ''}</div></td>
+        </tr>
     </table>
 
-    <div class="section-title">ПРОШЕЛ ПРЕДРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР К ИСПОЛНЕНИЮ ТРУДОВЫХ ОБЯЗАННОСТЕЙ ДОПУЩЕН</div>
-    <table class="waybill-table">
-        <tr><td>${waybill.date || ''}</td><td>${waybill.medTime || ''}</td><td>Медицинский работник: _______________</td></tr>
+    <table style="margin-top:3px">
+        <tr>
+            <td class="green-bg" style="width:30%">
+                <b>ПРОШЕЛ ПРЕДРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР К ИСПОЛНЕНИЮ ТРУДОВЫХ ОБЯЗАННОСТЕЙ ДОПУЩЕН</b>
+                ${w.medCert ? `<div style="font-size:6px;color:#666;margin-top:3px">${w.medCert}</div>` : ''}
+            </td>
+            <td style="width:12%;text-align:center"><b>${w.date || ''}</b></td>
+            <td style="width:12%;text-align:center"><b>${w.medTime || ''}</b></td>
+            <td style="width:46%;padding:0">${Waybills.eSignBlock('Медицинский работник', w.medName, w.date, w.medTime, w.medIssued, w.medExpires)}</td>
+        </tr>
     </table>
 
-    <div class="section-title">КОНТРОЛЬ ТЕХНИЧЕСКОГО СОСТОЯНИЯ ТРАНСПОРТНОГО СРЕДСТВА ПРОЙДЕН</div>
-    <table class="waybill-table">
-        <tr><td>${waybill.date || ''}</td><td>${waybill.techTime || ''}</td><td>Контролёр тех.сост. ТС: _______________</td></tr>
+    <table style="margin-top:3px">
+        <tr>
+            <td class="green-bg" style="width:30%">
+                <b>КОНТРОЛЬ ТЕХНИЧЕСКОГО СОСТОЯНИЯ ТРАНСПОРТНОГО СРЕДСТВА ПРОЙДЕН</b>
+                ${w.techCert ? `<div style="font-size:6px;color:#666;margin-top:3px">${w.techCert}</div>` : ''}
+            </td>
+            <td style="width:12%;text-align:center"><b>${w.date || ''}</b></td>
+            <td style="width:12%;text-align:center"><b>${w.techTime || ''}</b></td>
+            <td style="width:46%;padding:0">${Waybills.eSignBlock('Контролёр тех.сост. ТС', w.techName, w.date, w.techTime, w.techIssued, w.techExpires)}</td>
+        </tr>
     </table>
 
-    <table class="waybill-table">
-        <tr><td><strong>Начало смены:</strong></td><td>${waybill.date || ''}</td><td>${waybill.shiftStart || ''}</td></tr>
-        <tr><td><strong>Выезд с парковки:</strong></td><td>${waybill.date || ''}</td><td>${waybill.departureTime || ''}</td></tr>
-        <tr><td><strong>Показание одометра км:</strong></td><td colspan="2">${waybill.odometerStart || ''}</td></tr>
+    <table style="margin-top:3px">
+        <tr>
+            <td style="width:70%;padding:0">
+                <table>
+                    <tr><td style="width:50%"><b>Начало смены</b></td><td>${w.date || ''}</td><td><b>${w.shiftStart || ''}</b></td></tr>
+                    <tr><td><b>Выезд с парковки</b></td><td>${w.date || ''}</td><td><b>${w.departureTime || ''}</b></td></tr>
+                    <tr><td><b>Показание одометра км</b></td><td colspan="2"><b>${w.odometerStart || ''}</b></td></tr>
+                </table>
+            </td>
+            <td style="width:30%"><div class="release"><div class="small">ВЫПУСК НА ЛИНИЮ</div><div class="big">РАЗРЕШЕН</div></div></td>
+        </tr>
     </table>
 
-    <div style="border:2px solid #000;padding:10px;text-align:center;margin:10px 0;">
-        <strong>ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН</strong>
+    <div class="memo"><b>ПАМЯТКА ВОДИТЕЛЮ</b> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы. При неисправностях (поломках, неработающих фонарях, повреждении колёс/шин, отсутствии документов) установить табличку «В ПАРК», прекратить заказы, вернуться в автопарк и сообщить мастеру.</div>
+
+    <table>
+        <tr>
+            <td style="width:15%"><b>ВОДИТЕЛЬ:</b></td>
+            <td style="width:50%"><b>${w.driverName || ''}</b></td>
+            <td style="width:15%"><b>ПОДПИСЬ:</b></td>
+            <td style="width:20%"><span class="signature">${sig}</span></td>
+        </tr>
+    </table>
+
+    <div class="work-split">РАЗДЕЛЕНИЕ РАБОЧЕГО ДНЯ (СМЕНЫ)</div>
+    <table>
+        <tr>
+            <td class="green-bg" style="text-align:center"><b>ПЕРЕРЫВ НАЧАТ</b></td>
+            <td class="green-bg" style="text-align:center"><b>ПЕРЕРЫВ ОКОНЧЕН</b></td>
+            <td class="green-bg" style="text-align:center"><b>ОБЕД НАЧАТ</b></td>
+            <td class="green-bg" style="text-align:center"><b>ОБЕД ОКОНЧЕН</b></td>
+        </tr>
+        <tr><td style="height:18px"></td><td></td><td></td><td></td></tr>
+    </table>
+
+    <table style="margin-top:3px">
+        <tr>
+            <td class="green-bg" style="width:30%"><b>ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР</b></td>
+            <td style="width:12%;height:24px"></td>
+            <td style="width:12%"></td>
+            <td style="width:46%"></td>
+        </tr>
+    </table>
+    <table style="margin-top:3px">
+        <tr>
+            <td class="green-bg" style="width:30%"><b>ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ ТЕХНИЧЕСКИЙ ОСМОТР</b></td>
+            <td style="width:12%;height:24px"></td>
+            <td style="width:12%"></td>
+            <td style="width:46%"></td>
+        </tr>
+    </table>
+
+    <table style="margin-top:3px">
+        <tr><td style="width:50%"><b>Возвращение на парковку</b></td><td style="width:25%"></td><td style="width:25%"></td></tr>
+        <tr><td><b>Окончание смены</b></td><td>${w.date || ''}</td><td><b>${w.shiftEnd || ''}</b></td></tr>
+        <tr><td><b>Показание одометра км</b></td><td colspan="2"></td></tr>
+    </table>
+
+    <div class="footer">
+        <img src="${qrUrl}" alt="QR" width="100" height="100">
+        <div class="right">
+            <div class="org">${w.orgName || ''}</div>
+            <div class="ord">${w.mintransOrder || '390 ОТ 28.09.2022'}</div>
+        </div>
     </div>
-
-    <p style="font-size:9px;margin:8px 0;"><strong>ПАМЯТКА ВОДИТЕЛЮ</strong> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы.</p>
-
-    <table class="waybill-table">
-        <tr><td><strong>ВОДИТЕЛЬ:</strong></td><td>${waybill.driverName || ''}</td><td><strong>ПОДПИСЬ:</strong></td><td></td></tr>
-    </table>
-
-    <h3 style="text-align:center;margin:10px 0;">РАЗДЕЛЕНИЕ РАБОЧЕГО ДНЯ (СМЕНЫ)</h3>
-    <table class="waybill-table">
-        <tr><th>ПЕРЕРЫВ НАЧАТ</th><th>ПЕРЕРЫВ ОКОНЧЕН</th><th>ОБЕД НАЧАТ</th><th>ОБЕД ОКОНЧЕН</th></tr>
-        <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
-    </table>
-
-    <div class="section-title">ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР</div>
-    <table class="waybill-table">
-        <tr><td>&nbsp;</td><td></td><td>Медицинский работник: _______________</td></tr>
-    </table>
-
-    <div class="section-title">ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ ТЕХНИЧЕСКИЙ ОСМОТР</div>
-    <table class="waybill-table">
-        <tr><td>&nbsp;</td><td></td><td>Контролёр тех.сост. ТС: _______________</td></tr>
-    </table>
-
-    <table class="waybill-table">
-        <tr><td><strong>Возвращение на парковку:</strong></td><td></td><td></td></tr>
-        <tr><td><strong>Окончание смены:</strong></td><td>${waybill.date || ''}</td><td>${waybill.shiftEnd || ''}</td></tr>
-        <tr><td><strong>Показание одометра км:</strong></td><td colspan="2"></td></tr>
-    </table>
-
-    <p style="text-align:right;margin-top:20px;">${waybill.orgName || ''}<br>${waybill.mintransOrder || ''}</p>
-
-    <script>window.print();</script>
 </body>
 </html>`;
     }

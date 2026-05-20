@@ -1,19 +1,40 @@
 // Settings Module
 const Settings = {
+    FIELDS: [
+        'org-name', 'ogrn', 'inn', 'phone', 'address',
+        'okud', 'okpo', 'permit', 'mintrans',
+        'med-name', 'med-cert', 'med-issued', 'med-expires',
+        'tech-name', 'tech-cert', 'tech-issued', 'tech-expires'
+    ],
+
+    KEY_MAP: {
+        'org-name': 'orgName',
+        'ogrn': 'ogrn',
+        'inn': 'inn',
+        'phone': 'phone',
+        'address': 'address',
+        'okud': 'okud',
+        'okpo': 'okpo',
+        'permit': 'permit',
+        'mintrans': 'mintrans',
+        'med-name': 'medName',
+        'med-cert': 'medCert',
+        'med-issued': 'medIssued',
+        'med-expires': 'medExpires',
+        'tech-name': 'techName',
+        'tech-cert': 'techCert',
+        'tech-issued': 'techIssued',
+        'tech-expires': 'techExpires'
+    },
+
     async loadSettings() {
         try {
             const doc = await db.collection('settings').doc('company').get();
-            if (doc.exists) {
-                const data = doc.data();
-                document.getElementById('setting-org-name').value = data.orgName || '';
-                document.getElementById('setting-ogrn').value = data.ogrn || '';
-                document.getElementById('setting-inn').value = data.inn || '';
-                document.getElementById('setting-phone').value = data.phone || '';
-                document.getElementById('setting-address').value = data.address || '';
-                document.getElementById('setting-okud').value = data.okud || '';
-                document.getElementById('setting-okpo').value = data.okpo || '';
-                document.getElementById('setting-permit').value = data.permit || '';
-                document.getElementById('setting-mintrans').value = data.mintrans || '';
+            if (!doc.exists) return;
+            const data = doc.data();
+            for (const field of Settings.FIELDS) {
+                const el = document.getElementById('setting-' + field);
+                if (el) el.value = data[Settings.KEY_MAP[field]] || '';
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -29,18 +50,14 @@ const Settings = {
 
     async saveSettings() {
         try {
-            await db.collection('settings').doc('company').set({
-                orgName: document.getElementById('setting-org-name').value,
-                ogrn: document.getElementById('setting-ogrn').value,
-                inn: document.getElementById('setting-inn').value,
-                phone: document.getElementById('setting-phone').value,
-                address: document.getElementById('setting-address').value,
-                okud: document.getElementById('setting-okud').value,
-                okpo: document.getElementById('setting-okpo').value,
-                permit: document.getElementById('setting-permit').value,
-                mintrans: document.getElementById('setting-mintrans').value,
+            const payload = {
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            for (const field of Settings.FIELDS) {
+                const el = document.getElementById('setting-' + field);
+                payload[Settings.KEY_MAP[field]] = el ? el.value : '';
+            }
+            await db.collection('settings').doc('company').set(payload, { merge: true });
             showToast('Настройки сохранены!', 'success');
         } catch (error) {
             console.error('Error saving settings:', error);
