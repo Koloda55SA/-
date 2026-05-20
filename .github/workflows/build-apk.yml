@@ -7,6 +7,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,9 +26,27 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.24.0'
           channel: 'stable'
           cache: true
+
+      - name: Initialize Flutter project structure
+        run: |
+          # Create a temporary Flutter project to get all boilerplate files
+          flutter create --org com.taxopark --project-name taxopark_driver /tmp/flutter_template
+          
+          # Copy missing gradle/wrapper files from template
+          cp -r /tmp/flutter_template/android/gradle/wrapper/* mobile-app/android/gradle/wrapper/ 2>/dev/null || true
+          cp /tmp/flutter_template/android/gradlew mobile-app/android/ 2>/dev/null || true
+          cp /tmp/flutter_template/android/gradlew.bat mobile-app/android/ 2>/dev/null || true
+          chmod +x mobile-app/android/gradlew
+          
+          # Copy missing resource files (icons) if needed
+          for dir in mipmap-hdpi mipmap-mdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            if [ ! -f "mobile-app/android/app/src/main/res/$dir/ic_launcher.png" ]; then
+              cp -r /tmp/flutter_template/android/app/src/main/res/$dir/* mobile-app/android/app/src/main/res/$dir/ 2>/dev/null || true
+            fi
+          done
 
       - name: Get dependencies
         working-directory: mobile-app
@@ -33,7 +54,7 @@ jobs:
 
       - name: Build APK
         working-directory: mobile-app
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -43,7 +64,7 @@ jobs:
 
       - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
