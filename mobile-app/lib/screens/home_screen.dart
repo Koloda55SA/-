@@ -31,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _DashboardPage(driverData: widget.driverData, driverDocId: widget.driverDocId),
       WaybillHistoryScreen(driverDocId: widget.driverDocId),
       ProfileScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
-      const SettingsScreen(),
+      SettingsScreen(driverData: widget.driverData),
     ];
 
     return Scaffold(
@@ -346,7 +346,9 @@ class _DashboardPageState extends State<_DashboardPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(driverData: widget.driverData),
+                        ),
                       );
                     },
                   ),

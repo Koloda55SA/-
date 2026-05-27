@@ -11,7 +11,11 @@ const String _kAppVersion = '1.0.3+4';
 /// Полный экран настроек: уведомления, безопасность, язык, тема, информация
 /// о приложении, удаление аккаунта и выход.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// Профиль водителя (для отображения номера в карточке "Учётная запись").
+  /// Опционален — экран также работает без него (тогда возьмётся номер из Auth).
+  final Map<String, dynamic>? driverData;
+
+  const SettingsScreen({super.key, this.driverData});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -48,9 +52,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (v is String) await p.setString(k, v);
   }
 
+  /// Из Auth-email вида "79991234567@asempro.driver" собираем "+79991234567".
+  String _phoneFromAuthEmail(String? email) {
+    if (email == null) return '—';
+    final at = email.indexOf('@');
+    final digits = (at > 0 ? email.substring(0, at) : email).replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return '—';
+    return '+$digits';
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final phoneFromProfile = (widget.driverData?['phone'] ?? '').toString().trim();
+    final accountLabel = phoneFromProfile.isNotEmpty
+        ? phoneFromProfile
+        : _phoneFromAuthEmail(user?.email);
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -64,7 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            // Краткая карточка с email/телефоном
+            // Краткая карточка с номером водителя (без служебного email).
             if (user != null)
               AppCard(
                 padding: const EdgeInsets.all(16),
@@ -87,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const Text('Учётная запись', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                           const SizedBox(height: 2),
                           Text(
-                            user.email ?? '—',
+                            accountLabel,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),

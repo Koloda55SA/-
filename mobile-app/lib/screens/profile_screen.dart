@@ -4,9 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../theme/app_theme.dart';
 
-/// Р›РёС‡РЅС‹Р№ РєР°Р±РёРЅРµС‚ РІРѕРґРёС‚РµР»СЏ: Р¤РРћ, С„РѕС‚Рѕ-РёРЅРёС†РёР°Р»С‹, РєРѕРЅС‚Р°РєС‚РЅР°СЏ РёРЅС„РѕСЂРјР°С†РёСЏ,
-/// РґР°РЅРЅС‹Рµ Р°РІС‚РѕРјРѕР±РёР»СЏ, РґРѕРєСѓРјРµРЅС‚С‹ Рё РѕСЂРіР°РЅРёР·Р°С†РёСЏ. Р’СЃРµ РґР°РЅРЅС‹Рµ read-only вЂ”
-/// РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ С‚Р°РєСЃРѕРїР°СЂРєР°.
+/// Личный кабинет водителя: ФИО, фото-инициалы, контактная информация,
+/// данные автомобиля, документы и организация. Все данные read-only —
+/// меняет только администратор таксопарка.
 class ProfileScreen extends StatelessWidget {
   final Map<String, dynamic> driverData;
   final String driverDocId;
@@ -27,12 +27,12 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final fullName = (driverData['fullName'] ?? '').toString();
     final isActive = driverData['active'] != false;
-    final user = FirebaseAuth.instance.currentUser;
+    final phone = (driverData['phone'] ?? '').toString();
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
-        title: const Text('Р›РёС‡РЅС‹Р№ РєР°Р±РёРЅРµС‚'),
+        title: const Text('Личный кабинет'),
         leading: Navigator.canPop(context)
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -44,7 +44,7 @@ class ProfileScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            // ===== РђРІР°С‚Р°СЂ + РёРјСЏ =====
+            // ===== Аватар + имя =====
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -95,19 +95,19 @@ class ProfileScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          fullName.isEmpty ? 'Р’РѕРґРёС‚РµР»СЊ' : fullName,
+                          fullName.isEmpty ? 'Водитель' : fullName,
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 2,
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          (driverData['phone'] ?? '').toString(),
+                          phone,
                           style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
                         ),
                         const SizedBox(height: 10),
                         StatusChip(
-                          label: isActive ? 'РђРєС‚РёРІРµРЅ' : 'РќРµР°РєС‚РёРІРµРЅ',
+                          label: isActive ? 'Активен' : 'Неактивен',
                           color: isActive ? AppTheme.success : AppTheme.danger,
                           icon: isActive ? Icons.check_circle : Icons.block,
                         ),
@@ -120,88 +120,86 @@ class ProfileScreen extends StatelessWidget {
 
             const SizedBox(height: 22),
 
-            // ===== РЎС‚Р°С‚РёСЃС‚РёРєР° =====
+            // ===== Статистика =====
             _StatsRow(driverDocId: driverDocId),
 
             const SizedBox(height: 22),
 
-            // ===== РљРѕРЅС‚Р°РєС‚С‹ =====
-            _section('РљРѕРЅС‚Р°РєС‚С‹'),
+            // ===== Контакты =====
+            _section('Контакты'),
             AppCard(
               child: Column(
                 children: [
-                  _row(Icons.phone, 'РўРµР»РµС„РѕРЅ', (driverData['phone'] ?? '').toString()),
-                  const _RowDiv(),
-                  _row(Icons.email_outlined, 'Email (РІРЅСѓС‚СЂРµРЅРЅРёР№)', user?.email ?? 'вЂ”'),
+                  _row(Icons.phone, 'Телефон', phone.isEmpty ? '—' : phone),
                 ],
               ),
             ),
 
             const SizedBox(height: 18),
 
-            // ===== РђРІС‚РѕРјРѕР±РёР»СЊ =====
-            _section('РђРІС‚РѕРјРѕР±РёР»СЊ'),
+            // ===== Автомобиль =====
+            _section('Автомобиль'),
             AppCard(
               child: Column(
                 children: [
-                  _row(Icons.directions_car, 'РњР°СЂРєР°', (driverData['carModel'] ?? 'вЂ”').toString()),
+                  _row(Icons.directions_car, 'Марка', (driverData['carModel'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.confirmation_number, 'Р“РѕСЃ. РЅРѕРјРµСЂ', (driverData['plateNumber'] ?? 'вЂ”').toString()),
+                  _row(Icons.confirmation_number, 'Гос. номер', (driverData['plateNumber'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.garage, 'Р“Р°СЂР°Р¶РЅС‹Р№ в„–', (driverData['garageNumber'] ?? 'вЂ”').toString()),
+                  _row(Icons.garage, 'Гаражный №', (driverData['garageNumber'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.badge_outlined, 'РўР°Р±РµР»СЊРЅС‹Р№ в„–', (driverData['tabNumber'] ?? 'вЂ”').toString()),
+                  _row(Icons.badge_outlined, 'Табельный №', (driverData['tabNumber'] ?? '—').toString()),
                 ],
               ),
             ),
 
             const SizedBox(height: 18),
 
-            // ===== Р”РѕРєСѓРјРµРЅС‚С‹ =====
-            _section('Р”РѕРєСѓРјРµРЅС‚С‹'),
+            // ===== Документы =====
+            _section('Документы'),
             AppCard(
               child: Column(
                 children: [
-                  _row(Icons.credit_card, 'РЈРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ', (driverData['license'] ?? 'вЂ”').toString()),
+                  _row(Icons.credit_card, 'Удостоверение', (driverData['license'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.school_outlined, 'РљР»Р°СЃСЃ', (driverData['licenseClass'] ?? 'вЂ”').toString()),
+                  _row(Icons.school_outlined, 'Класс', (driverData['licenseClass'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.fingerprint, 'ID РІРѕРґРёС‚РµР»СЏ', (driverData['driverIdNumber'] ?? 'вЂ”').toString()),
+                  _row(Icons.fingerprint, 'ID водителя', (driverData['driverIdNumber'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.account_balance_outlined, 'РЎРќРР›РЎ', (driverData['snils'] ?? 'вЂ”').toString()),
+                  _row(Icons.account_balance_outlined, 'СНИЛС', (driverData['snils'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.receipt_long, 'РРќРќ', (driverData['inn'] ?? 'вЂ”').toString()),
+                  _row(Icons.receipt_long, 'ИНН', (driverData['inn'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.verified_outlined, 'РћРЎР“РћРџ', (driverData['osgop'] ?? 'вЂ”').toString()),
+                  _row(Icons.verified_outlined, 'ОСГОП', (driverData['osgop'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.assignment_outlined, 'Р Р°Р·СЂРµС€РµРЅРёРµ в„–', (driverData['permit'] ?? 'вЂ”').toString()),
+                  _row(Icons.assignment_outlined, 'Разрешение №', (driverData['permit'] ?? '—').toString()),
                 ],
               ),
             ),
 
             const SizedBox(height: 18),
 
-            // ===== РћСЂРіР°РЅРёР·Р°С†РёСЏ =====
-            _section('РћСЂРіР°РЅРёР·Р°С†РёСЏ'),
+            // ===== Организация =====
+            _section('Организация'),
             AppCard(
               child: Column(
                 children: [
-                  _row(Icons.business, 'РќР°Р·РІР°РЅРёРµ', (driverData['orgName'] ?? 'вЂ”').toString()),
+                  _row(Icons.business, 'Название', (driverData['orgName'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.tag, 'РћР“Р Рќ (РРџ)', (driverData['orgOgrn'] ?? 'вЂ”').toString()),
+                  _row(Icons.tag, 'ОГРН (ИП)', (driverData['orgOgrn'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.tag, 'РРќРќ', (driverData['orgInn'] ?? 'вЂ”').toString()),
+                  _row(Icons.tag, 'ИНН', (driverData['orgInn'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.phone_in_talk_outlined, 'РўРµР»РµС„РѕРЅ', (driverData['orgPhone'] ?? 'вЂ”').toString()),
+                  _row(Icons.phone_in_talk_outlined, 'Телефон', (driverData['orgPhone'] ?? '—').toString()),
                   const _RowDiv(),
-                  _row(Icons.place_outlined, 'РђРґСЂРµСЃ', (driverData['orgAddress'] ?? 'вЂ”').toString(), wrap: true),
+                  _row(Icons.place_outlined, 'Адрес', (driverData['orgAddress'] ?? '—').toString(), wrap: true),
                 ],
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // РџРѕРґСЃРєР°Р·РєР°
+            // Подсказка
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -215,7 +213,7 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
-                      'Р•СЃР»Рё РґР°РЅРЅС‹Рµ РЅРµС‚РѕС‡РЅС‹Рµ вЂ” РѕР±СЂР°С‚РёС‚РµСЃСЊ Рє Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ С‚Р°РєСЃРѕРїР°СЂРєР°.',
+                      'Если данные неточные — обратитесь к администратору таксопарка.',
                       style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.4),
                     ),
                   ),
@@ -303,11 +301,11 @@ class _StatsRow extends StatelessWidget {
         }
         return Row(
           children: [
-            Expanded(child: _stat('Р’СЃРµРіРѕ', '$total', AppTheme.primary, Icons.description_outlined)),
+            Expanded(child: _stat('Всего', '$total', AppTheme.primary, Icons.description_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _stat('Р—Р°РєСЂС‹С‚Рѕ', '$closed', AppTheme.success, Icons.check_circle_outline)),
+            Expanded(child: _stat('Закрыто', '$closed', AppTheme.success, Icons.check_circle_outline)),
             const SizedBox(width: 10),
-            Expanded(child: _stat('РђРєС‚РёРІРЅРѕ', '$open', AppTheme.info, Icons.bolt)),
+            Expanded(child: _stat('Активно', '$open', AppTheme.info, Icons.bolt)),
           ],
         );
       },
@@ -332,4 +330,3 @@ class _StatsRow extends StatelessWidget {
     );
   }
 }
-
