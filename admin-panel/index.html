@@ -39,22 +39,19 @@
                 <form id="login-form">
                     <div class="form-group">
                         <label for="login-phone"><i class="fas fa-phone"></i> Номер телефона</label>
-                        <input type="tel" id="login-phone" placeholder="+7 (999) 123-45-67" required>
+                        <input type="tel" id="login-phone" placeholder="+7 (999) 123-45-67" required autocomplete="username">
                     </div>
-                    <div id="recaptcha-container-login"></div>
-                    <div id="sms-code-group" style="display:none">
-                        <div class="form-group">
-                            <label for="login-code"><i class="fas fa-key"></i> Код из SMS</label>
-                            <input type="text" id="login-code" placeholder="123456" maxlength="6">
-                        </div>
+                    <div class="form-group">
+                        <label for="login-password"><i class="fas fa-lock"></i> Пароль</label>
+                        <input type="password" id="login-password" placeholder="Минимум 6 символов" required minlength="6" autocomplete="current-password">
                     </div>
                     <button type="submit" id="login-btn" class="btn btn-primary btn-full btn-glow">
-                        <i class="fas fa-paper-plane"></i> <span id="login-btn-text">Отправить SMS</span>
+                        <i class="fas fa-arrow-right-to-bracket"></i> <span id="login-btn-text">Войти</span>
                     </button>
                 </form>
                 <div id="login-error" class="error-message"></div>
                 <div class="login-footer">
-                    <i class="fas fa-shield-halved"></i> Безопасный вход для администраторов
+                    <i class="fas fa-shield-halved"></i> Безопасный вход по номеру и паролю
                 </div>
             </div>
         </div>

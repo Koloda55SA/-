@@ -1,10 +1,27 @@
-// Authentication Module - Phone Auth
+// Authentication Module — Phone + Password (БЕЗ SMS)
+//
+// Админ входит по номеру телефона и паролю, который он сам себе задал
+// в Firebase Console. Под капотом, как и у водителей, используется
+// Firebase Email Auth с синтетическим email:
+//
+//     <digits>@asempro.admin       (например, 79153955383@asempro.admin)
+//
+// Чтобы создать первого администратора:
+//   1. Firebase Console → Authentication → Users → Add user
+//      Email:    <digits>@asempro.admin   (цифры номера без + и пробелов)
+//      Password: любой ≥ 6 символов
+//   2. Скопируйте UID созданного пользователя
+//   3. Firestore → admins → создайте документ с ID = этот UID:
+//      {
+//        phone:     "+7...",
+//        role:      "admin",
+//        createdAt: <timestamp>
+//      }
+//
+// После этого администратор входит по своему номеру + паролю.
 const Auth = {
     currentUser: null,
     _bootDone: false,
-    _confirmationResult: null,
-    _recaptchaVerifier: null,
-    _recaptchaRendered: false,
 
     init() {
         const cachedAdmin = localStorage.getItem('asempro_admin');
@@ -23,9 +40,11 @@ const Auth = {
                     const adminDoc = await db.collection('admins').doc(user.uid).get();
                     if (adminDoc.exists) {
                         Auth.currentUser = user;
+                        const adminData = adminDoc.data() || {};
+                        const display = adminData.phone || user.email || 'Admin';
                         localStorage.setItem('asempro_admin', JSON.stringify({
                             uid: user.uid,
-                            phone: user.phoneNumber || user.email || 'Admin'
+                            phone: display
                         }));
                         Auth.showDashboard();
                     } else {
@@ -55,6 +74,7 @@ const Auth = {
             await auth.signOut();
         });
 
+        // Если за 6 секунд auth не успел инициализироваться — показываем форму
         setTimeout(() => {
             if (!Auth._bootDone && !Auth.currentUser) {
                 Auth.showLogin();
@@ -62,25 +82,9 @@ const Auth = {
         }, 6000);
     },
 
-    _ensureRecaptcha() {
-        if (Auth._recaptchaVerifier) return;
-        Auth._recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container-login', {
-            size: 'invisible',
-            callback: () => {}
-        });
-    },
-
-    async handleLogin() {
-        const codeInput = document.getElementById('login-code');
-        if (Auth._confirmationResult && codeInput.value.trim()) {
-            await Auth.verifyCode();
-        } else {
-            await Auth.sendSms();
-        }
-    },
-
+    // Приводим номер телефона к виду "+79991234567"
     _formatPhone(raw) {
-        let phone = raw.replace(/[\s\(\)\-]/g, '');
+        let phone = String(raw || '').replace(/[\s\(\)\-]/g, '');
         if (phone.startsWith('8') && phone.length === 11) {
             phone = '+7' + phone.substring(1);
         }
@@ -88,72 +92,61 @@ const Auth = {
         return phone;
     },
 
-    async sendSms() {
-        const phoneRaw = document.getElementById('login-phone').value;
-        const phone = Auth._formatPhone(phoneRaw);
-        const btn = document.getElementById('login-btn');
-        const originalContent = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Отправка...';
-
-        try {
-            Auth._ensureRecaptcha();
-            Auth._confirmationResult = await auth.signInWithPhoneNumber(phone, Auth._recaptchaVerifier);
-            document.getElementById('sms-code-group').style.display = 'block';
-            document.getElementById('login-btn-text').textContent = 'Подтвердить код';
-            document.getElementById('login-code').focus();
-        } catch (error) {
-            console.error('SMS error:', error);
-            let message = 'Ошибка отправки SMS';
-            if (error.code === 'auth/invalid-phone-number') {
-                message = 'Некорректный номер телефона';
-            } else if (error.code === 'auth/too-many-requests') {
-                message = 'Слишком много попыток. Попробуйте позже';
-            } else if (error.code === 'auth/captcha-check-failed') {
-                message = 'Ошибка проверки. Обновите страницу';
-            }
-            Auth.showError(message);
-            Auth._recaptchaVerifier = null;
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = originalContent;
-        }
+    // "+79991234567" -> "79991234567@asempro.admin"
+    _phoneToAdminEmail(normalizedPhone) {
+        const digits = normalizedPhone.replace(/\D/g, '');
+        return `${digits}@asempro.admin`;
     },
 
-    async verifyCode() {
-        const code = document.getElementById('login-code').value.trim();
-        if (!code || code.length < 6) {
-            Auth.showError('Введите 6-значный код из SMS');
+    async handleLogin() {
+        const phoneRaw = document.getElementById('login-phone').value;
+        const password = (document.getElementById('login-password').value || '').trim();
+        const phone = Auth._formatPhone(phoneRaw);
+
+        if (phone.replace(/\D/g, '').length < 10) {
+            Auth.showError('Введите корректный номер телефона');
             return;
         }
+        if (password.length < 6) {
+            Auth.showError('Пароль должен быть не короче 6 символов');
+            return;
+        }
+
         const btn = document.getElementById('login-btn');
         const originalContent = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Проверка...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
 
         try {
-            const result = await Auth._confirmationResult.confirm(code);
-            const adminDoc = await db.collection('admins').doc(result.user.uid).get();
-            if (!adminDoc.exists) {
-                await auth.signOut();
-                Auth.showError('У вас нет прав администратора. Обратитесь к владельцу.');
-                Auth._confirmationResult = null;
-                document.getElementById('sms-code-group').style.display = 'none';
-                document.getElementById('login-btn-text').textContent = 'Отправить SMS';
-                return;
-            }
+            const email = Auth._phoneToAdminEmail(phone);
+            await auth.signInWithEmailAndPassword(email, password);
+            // onAuthStateChanged выше проверит /admins/<uid> и переключит на dashboard
         } catch (error) {
-            console.error('Code verify error:', error);
-            let message = 'Неверный код';
-            if (error.code === 'auth/invalid-verification-code') {
-                message = 'Неверный код из SMS';
-            } else if (error.code === 'auth/code-expired') {
-                message = 'Код истёк. Отправьте SMS заново';
-                Auth._confirmationResult = null;
-                document.getElementById('sms-code-group').style.display = 'none';
-                document.getElementById('login-btn-text').textContent = 'Отправить SMS';
+            console.error('Admin login error:', error);
+            let msg = 'Ошибка входа';
+            switch (error.code) {
+                case 'auth/invalid-credential':
+                case 'auth/wrong-password':
+                case 'auth/user-not-found':
+                    msg = 'Неверный номер или пароль';
+                    break;
+                case 'auth/invalid-email':
+                    msg = 'Некорректный номер телефона';
+                    break;
+                case 'auth/user-disabled':
+                    msg = 'Аккаунт отключён';
+                    break;
+                case 'auth/too-many-requests':
+                    msg = 'Слишком много попыток. Попробуйте позже';
+                    break;
+                case 'auth/network-request-failed':
+                    msg = 'Нет соединения с интернетом';
+                    break;
+                case 'auth/operation-not-allowed':
+                    msg = 'В Firebase Console не включён Email/Password Authentication';
+                    break;
             }
-            Auth.showError(message);
+            Auth.showError(msg);
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalContent;
@@ -173,7 +166,16 @@ const Auth = {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.remove('active');
         document.getElementById('dashboard-page').classList.add('active');
-        const display = Auth.currentUser.phoneNumber || Auth.currentUser.email || 'Admin';
+        // Подпись в шапке/сайдбаре: пытаемся достать phone из admins-документа,
+        // иначе показываем email (без @asempro.admin) или просто "Admin".
+        let display = 'Admin';
+        try {
+            const cached = JSON.parse(localStorage.getItem('asempro_admin') || '{}');
+            if (cached && cached.phone) display = cached.phone;
+        } catch (_) {}
+        if (display === 'Admin' && Auth.currentUser?.email) {
+            display = Auth.currentUser.email.split('@')[0];
+        }
         document.getElementById('admin-email').textContent = display;
         const sidebarEl = document.getElementById('admin-email-sidebar');
         if (sidebarEl) sidebarEl.textContent = display;
@@ -187,9 +189,6 @@ const Auth = {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.add('active');
         document.getElementById('dashboard-page').classList.remove('active');
-        Auth._confirmationResult = null;
-        document.getElementById('sms-code-group').style.display = 'none';
-        document.getElementById('login-btn-text').textContent = 'Отправить SMS';
     },
 
     showError(message) {
