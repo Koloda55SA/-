@@ -206,9 +206,6 @@ class WaybillPdfService {
                 pw.SizedBox(height: 1),
                 pw.Text(_v(d, 'orgAddress'),
                     style: const pw.TextStyle(fontSize: 7)),
-                pw.SizedBox(height: 3),
-                pw.Text('наименование, адрес, ОГРН(ИП), ИНН, номер телефона',
-                    style: const pw.TextStyle(fontSize: 5.5, color: _greyLight)),
               ],
             ),
           ),
@@ -291,8 +288,6 @@ class WaybillPdfService {
                 _lblValue('Государственный номерной знак', _v(d, 'plateNumber'), 12),
                 pw.SizedBox(height: 2),
                 _lblValue('Водитель', _v(d, 'driverName'), 10),
-                pw.Text('фамилия, имя, отчество',
-                    style: const pw.TextStyle(fontSize: 5.5, color: _greyLight)),
                 pw.SizedBox(height: 2),
                 pw.RichText(
                   text: pw.TextSpan(
@@ -346,9 +341,6 @@ class WaybillPdfService {
                 pw.SizedBox(height: 8),
                 pw.Text(_v(d, 'commType'),
                     style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 2),
-                pw.Text('вид сообщения',
-                    style: const pw.TextStyle(fontSize: 5.5, color: _greyLight)),
               ],
             ),
           ),
@@ -660,6 +652,50 @@ class WaybillPdfService {
 
   // ============== 9. Подпись водителя ==============
   static pw.Widget _driverSignatureRow(Map<String, dynamic> d) {
+    // Получаем подпись водителя: либо из локальных bytes, либо из base64 data URL
+    Uint8List? signatureBytes;
+    final localBytes = d['_signatureBytes'];
+    if (localBytes is Uint8List) {
+      signatureBytes = localBytes;
+    } else if (localBytes is List<int>) {
+      signatureBytes = Uint8List.fromList(localBytes);
+    } else {
+      final dataUrl = _v(d, 'signatureData');
+      if (dataUrl.startsWith('data:image')) {
+        final commaIdx = dataUrl.indexOf(',');
+        if (commaIdx > 0) {
+          try {
+            signatureBytes = base64Decode(dataUrl.substring(commaIdx + 1));
+          } catch (_) {}
+        }
+      }
+    }
+
+    pw.Widget signatureWidget;
+    if (signatureBytes != null) {
+      signatureWidget = pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: pw.Image(
+          pw.MemoryImage(signatureBytes),
+          height: 28,
+          fit: pw.BoxFit.contain,
+        ),
+      );
+    } else {
+      // Fallback — стилизованная имитация подписи
+      signatureWidget = pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: pw.Text(
+          _signature(_v(d, 'driverName')),
+          style: pw.TextStyle(
+            fontSize: 16,
+            fontWeight: pw.FontWeight.bold,
+            color: _signBlue,
+          ),
+        ),
+      );
+    }
+
     return pw.Table(
       border: pw.TableBorder.all(width: 0.6),
       columnWidths: const {
@@ -673,17 +709,7 @@ class WaybillPdfService {
           _cellLabel('ВОДИТЕЛЬ:', bold: true),
           _cellValue(_v(d, 'driverName'), bold: true),
           _cellLabel('ПОДПИСЬ:', bold: true),
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            child: pw.Text(
-              _signature(_v(d, 'driverName')),
-              style: pw.TextStyle(
-                fontSize: 16,
-                fontWeight: pw.FontWeight.bold,
-                color: _signBlue,
-              ),
-            ),
-          ),
+          signatureWidget,
         ]),
       ],
     );

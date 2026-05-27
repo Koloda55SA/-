@@ -1,10 +1,7 @@
-// Settings Module
+// Settings Module - Simplified (no med/tech fields)
 const Settings = {
     FIELDS: [
-        'org-name', 'ogrn', 'inn', 'phone', 'address',
-        'okud', 'okpo', 'permit', 'mintrans',
-        'med-name', 'med-cert', 'med-issued', 'med-expires',
-        'tech-name', 'tech-cert', 'tech-issued', 'tech-expires'
+        'org-name', 'ogrn', 'inn', 'phone', 'address'
     ],
 
     KEY_MAP: {
@@ -12,19 +9,7 @@ const Settings = {
         'ogrn': 'ogrn',
         'inn': 'inn',
         'phone': 'phone',
-        'address': 'address',
-        'okud': 'okud',
-        'okpo': 'okpo',
-        'permit': 'permit',
-        'mintrans': 'mintrans',
-        'med-name': 'medName',
-        'med-cert': 'medCert',
-        'med-issued': 'medIssued',
-        'med-expires': 'medExpires',
-        'tech-name': 'techName',
-        'tech-cert': 'techCert',
-        'tech-issued': 'techIssued',
-        'tech-expires': 'techExpires'
+        'address': 'address'
     },
 
     async loadSettings() {

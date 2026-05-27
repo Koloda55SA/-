@@ -7,14 +7,12 @@ function showSection(sectionName) {
         li.classList.toggle('active', li.dataset.section === sectionName);
     });
     const titles = {
-        'dashboard': 'Дашборд',
         'drivers': 'Водители',
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
         'settings': 'Настройки'
     };
     document.getElementById('page-title').textContent = titles[sectionName] || '';
-    // Auto-close sidebar on mobile after navigation
     if (window.innerWidth <= 1024) closeSidebar();
 }
 
@@ -51,6 +49,34 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+// Theme toggle
+function toggleTheme() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('asempro_theme', next);
+    updateThemeUI(next);
+}
+
+function updateThemeUI(theme) {
+    const icon = document.getElementById('theme-icon');
+    const label = document.getElementById('theme-label');
+    if (theme === 'light') {
+        icon.className = 'fas fa-sun';
+        label.textContent = 'Светлая тема';
+    } else {
+        icon.className = 'fas fa-moon';
+        label.textContent = 'Тёмная тема';
+    }
+}
+
+function initTheme() {
+    const saved = localStorage.getItem('asempro_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    updateThemeUI(saved);
+}
+
 async function updateDashboard() {
     try {
         const driversSnap = await db.collection('drivers').get();
@@ -66,37 +92,13 @@ async function updateDashboard() {
         document.getElementById('stat-active').textContent = activeCount;
         document.getElementById('stat-waybills').textContent = waybillsSnap.size;
         document.getElementById('stat-today').textContent = todayCount;
-
-        // Recent activity
-        const activity = document.getElementById('recent-activity');
-        const recent = [];
-        waybillsSnap.forEach(doc => {
-            const d = doc.data();
-            if (d.createdAt) recent.push(d);
-        });
-        recent.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-        if (recent.length === 0) {
-            activity.innerHTML = '<p class="empty-text">Нет активности</p>';
-        } else {
-            activity.innerHTML = recent.slice(0, 5).map(w => `
-                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);min-width:0">
-                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                        <i class="fas fa-file-lines" style="color:var(--primary-light);font-size:14px"></i>
-                    </div>
-                    <div style="min-width:0;flex:1;overflow:hidden">
-                        <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Путевой лист АП №${w.waybillNumber || ''}</div>
-                        <div style="font-size:11px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.driverName || ''} - ${w.date || ''}</div>
-                    </div>
-                </div>
-            `).join('');
-        }
     } catch (e) {
         console.error('Dashboard update error:', e);
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     Auth.init();
     Drivers.init();
     Settings.init();

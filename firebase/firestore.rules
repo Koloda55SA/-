@@ -1,61 +1,81 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to check admin role
+
     function isAdmin() {
-      return request.auth != null && 
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
-    
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Admins collection - only admins can read/write
+    // Админы. Создание первого админа — через Firebase Console.
     match /admins/{adminId} {
-      allow read, write: if isAdmin();
+      allow read: if isAuthenticated() && request.auth.uid == adminId;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
     }
-    
-    // Drivers collection - admins full access, drivers read only their own doc
+
+    // Водители: админ — полный доступ; водитель — только чтение собственного документа.
+    // Doc ID водителя = его Firebase Auth UID, поэтому достаточно сравнить с request.auth.uid.
     match /drivers/{driverId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == driverId || isAdmin()
-      );
-      allow create, update: if isAdmin();
+      allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == driverId);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Путевые листы:
+    //   - чтение: админ или владелец (по authUid в документе)
+    //   - создание: только сам водитель и только для своего authUid
+    //   - обновление: админ или владелец (например, закрытие смены)
+    //   - удаление: только админ
+    match /waybills/{waybillId} {
+      allow get: if isAdmin() ||
+                    (isAuthenticated() && resource.data.authUid == request.auth.uid);
+      allow list: if isAdmin() ||
+                    (isAuthenticated() &&
+                     request.query.limit <= 100);
+      allow create: if isAuthenticated() &&
+                       request.resource.data.keys().hasAll(
+                         ['driverId', 'authUid', 'waybillNumber', 'date', 'driverName']
+                       ) &&
+                       request.resource.data.authUid == request.auth.uid;
+      allow update: if isAdmin() ||
+                       (isAuthenticated() && resource.data.authUid == request.auth.uid);
       allow delete: if isAdmin();
     }
-    
-    // Waybills collection - strict rules
-    match /waybills/{waybillId} {
-      // Admins can read all; drivers can read only their own waybills
-      allow read: if isAuthenticated() && (
-        isAdmin() || resource.data.driverId == request.auth.uid
-      );
-      // Only authenticated drivers can create waybills, and only for themselves
-      allow create: if isAuthenticated() && 
-        request.resource.data.driverId == request.auth.uid &&
-        request.resource.data.keys().hasAll(['driverId', 'waybillNumber', 'date', 'driverName']);
-      // Only admins can update/delete
-      allow update, delete: if isAdmin();
-    }
-    
-    // Company settings - everyone reads, only admins write
+
+    // Настройки компании. Читать может любой авторизованный (нужно мобильному
+    // приложению), писать — только админ.
     match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
-    // Account deletion requests
+    // Запросы на сброс пароля (создаёт админ; обработает Cloud Function)
+    match /passwordResets/{requestId} {
+      allow create: if isAdmin();
+      allow read, list: if isAdmin();
+    }
+
+    // Запросы на удаление аккаунта водителя (создаёт сам водитель или админ)
     match /deletionRequests/{requestId} {
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() &&
+                       request.resource.data.uid == request.auth.uid;
       allow read: if isAuthenticated() && (
         resource.data.uid == request.auth.uid || isAdmin()
       );
     }
 
-    // Deny all other access
+    // Запросы на удаление аккаунта (создаёт админ; обрабатывает Cloud Function)
+    match /driverDeletions/{requestId} {
+      allow create: if isAdmin();
+      allow read, list: if isAdmin();
+    }
+
+    // По умолчанию всё закрыто
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,6 +1,17 @@
-// Waybills Management Module
+// Waybills Management Module - Updated for per-driver org
 const Waybills = {
     waybills: [],
+
+    // HTML-escape для безопасной вставки в innerHTML
+    _esc(value) {
+        const s = value == null ? '' : String(value);
+        return s
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
 
     async loadWaybills() {
         try {
@@ -8,7 +19,7 @@ const Waybills = {
                 .orderBy('createdAt', 'desc')
                 .limit(50)
                 .get();
-            
+
             Waybills.waybills = [];
             const tbody = document.getElementById('waybills-tbody');
             tbody.innerHTML = '';
@@ -16,11 +27,11 @@ const Waybills = {
             snapshot.forEach(doc => {
                 const waybill = { id: doc.id, ...doc.data() };
                 Waybills.waybills.push(waybill);
-                tbody.innerHTML += Waybills.renderRow(waybill);
+                tbody.insertAdjacentHTML('beforeend', Waybills.renderRow(waybill));
             });
 
             if (Waybills.waybills.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:32px;">Нет путевых листов</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Нет путевых листов</td></tr>';
             }
         } catch (error) {
             console.error('Error loading waybills:', error);
@@ -28,19 +39,24 @@ const Waybills = {
     },
 
     renderRow(waybill) {
+        const e = Waybills._esc;
         const date = waybill.createdAt ? new Date(waybill.createdAt.seconds * 1000).toLocaleDateString('ru-RU') : '';
-        const status = waybill.status === 'completed' ? 
-            '<span class="status-badge status-active">Завершён</span>' : 
-            '<span class="status-badge" style="background:#fef3c7;color:#d97706;">Активен</span>';
-        
+        let status;
+        if (waybill.status === 'closed') {
+            status = '<span class="status-badge status-active">Закрыт</span>';
+        } else {
+            status = '<span class="status-badge status-open">Открыт</span>';
+        }
+
         return `
             <tr>
-                <td data-label="Номер"><strong>АП №${waybill.waybillNumber || ''}</strong></td>
-                <td data-label="Водитель">${waybill.driverName || ''}</td>
-                <td data-label="Дата">${date}</td>
+                <td data-label="Номер"><strong>АП №${e(waybill.waybillNumber)}</strong></td>
+                <td data-label="Водитель">${e(waybill.driverName)}</td>
+                <td data-label="Организация">${e(waybill.orgName) || '—'}</td>
+                <td data-label="Дата">${e(date)}</td>
                 <td data-label="Статус">${status}</td>
                 <td data-label="Действия">
-                    <button class="btn btn-sm btn-primary" onclick="Waybills.viewWaybill('${waybill.id}')">
+                    <button class="btn btn-sm btn-primary" onclick="Waybills.viewWaybill('${e(waybill.id)}')">
                         <i class="fas fa-eye"></i> Просмотр
                     </button>
                 </td>
@@ -52,7 +68,6 @@ const Waybills = {
         const waybill = Waybills.waybills.find(w => w.id === waybillId);
         if (!waybill) return;
         
-        // Open waybill in new window for printing
         const printWindow = window.open('', '_blank');
         printWindow.document.write(Waybills.generateWaybillHTML(waybill));
         printWindow.document.close();
@@ -73,27 +88,12 @@ const Waybills = {
         return `${first}.${last}~~`;
     },
 
-    eSignBlock(label, name, date, time, issued, expires) {
-        return `
-            <div class="esign">
-                <div class="esign-header">
-                    <div class="esign-dot"></div>
-                    <div><b>Документ подписан</b><br><b>электронной подписью</b></div>
-                </div>
-                <div class="esign-label">${label}:</div>
-                <div class="esign-name">${name || ''}</div>
-                <div class="esign-meta">Дата подписи: ${date || ''} ${time || ''}</div>
-                ${(issued || expires) ? `<div class="esign-meta">Действителен: ${Waybills.formatShortDate(issued)} - ${Waybills.formatShortDate(expires)}</div>` : ''}
-            </div>
-        `;
-    },
-
     generateWaybillHTML(w) {
         const qrData = btoa(unescape(encodeURIComponent(
             `n:${w.waybillNumber}|d:${w.date}|org:${w.orgName||''}|drv:${w.driverName||''}|p:${w.plateNumber||''}`
         )));
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}`;
-        const sig = Waybills.signatureScribble(w.driverName);
+        const sig = w.signatureData ? `<img src="${w.signatureData}" style="height:40px;max-width:200px;" alt="Подпись">` : `<span class="signature">${Waybills.signatureScribble(w.driverName)}</span>`;
 
         return `
 <!DOCTYPE html>
@@ -122,12 +122,6 @@ const Waybills = {
         .codes-row { display: flex; justify-content: space-between; padding: 1px 4px; border-bottom: 1px solid #ccc; font-size: 7px; }
         .codes-row .v { font-weight: bold; }
         .green-bg { background: #d9ead3; }
-        .esign { background: #e8f0fe; border: 1px solid #4a90d9; padding: 4px 6px; font-size: 7px; line-height: 1.25; }
-        .esign-header { display: flex; gap: 4px; align-items: center; color: #4a90d9; font-weight: bold; font-size: 7px; }
-        .esign-dot { width: 7px; height: 7px; border-radius: 50%; background: #4a90d9; flex-shrink: 0; }
-        .esign-label { color: #666; margin-top: 2px; font-size: 6.5px; }
-        .esign-name { font-weight: bold; font-size: 8px; }
-        .esign-meta { font-size: 6.5px; color: #555; }
         .release { border: 2px solid #000; padding: 8px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
         .release .small { font-size: 10px; font-weight: bold; }
         .release .big { font-size: 16px; font-weight: bold; }
@@ -169,7 +163,7 @@ const Waybills = {
                 <div class="lbl">Организация</div>
                 <div class="val">${w.orgName || ''}</div>
                 <div style="font-size:8px">${w.orgAddress || ''}</div>
-                <div style="font-size:8px">ОГРН(ИП): ${w.ogrn || ''}&nbsp;&nbsp;ИНН: ${w.orgInn || ''}&nbsp;&nbsp;Тел.: ${w.orgPhone || ''}</div>
+                <div style="font-size:8px">ОГРН(ИП): ${w.ogrn || w.orgOgrn || ''}&nbsp;&nbsp;ИНН: ${w.orgInn || ''}&nbsp;&nbsp;Тел.: ${w.orgPhone || ''}</div>
                 <div style="font-size:6px;color:#666">наименование, адрес, ОГРН(ИП), ИНН, номер телефона</div>
             </td>
             <td style="padding:0">
@@ -204,31 +198,7 @@ const Waybills = {
         </tr>
         <tr>
             <td><div class="lbl">ОСГОП</div><div class="val">${w.osgop || ''}</div></td>
-            <td><div class="lbl">Разрешение №</div><div class="val">${w.permitNumber || ''}</div></td>
-        </tr>
-    </table>
-
-    <table style="margin-top:3px">
-        <tr>
-            <td class="green-bg" style="width:30%">
-                <b>ПРОШЕЛ ПРЕДРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР К ИСПОЛНЕНИЮ ТРУДОВЫХ ОБЯЗАННОСТЕЙ ДОПУЩЕН</b>
-                ${w.medCert ? `<div style="font-size:6px;color:#666;margin-top:3px">${w.medCert}</div>` : ''}
-            </td>
-            <td style="width:12%;text-align:center"><b>${w.date || ''}</b></td>
-            <td style="width:12%;text-align:center"><b>${w.medTime || ''}</b></td>
-            <td style="width:46%;padding:0">${Waybills.eSignBlock('Медицинский работник', w.medName, w.date, w.medTime, w.medIssued, w.medExpires)}</td>
-        </tr>
-    </table>
-
-    <table style="margin-top:3px">
-        <tr>
-            <td class="green-bg" style="width:30%">
-                <b>КОНТРОЛЬ ТЕХНИЧЕСКОГО СОСТОЯНИЯ ТРАНСПОРТНОГО СРЕДСТВА ПРОЙДЕН</b>
-                ${w.techCert ? `<div style="font-size:6px;color:#666;margin-top:3px">${w.techCert}</div>` : ''}
-            </td>
-            <td style="width:12%;text-align:center"><b>${w.date || ''}</b></td>
-            <td style="width:12%;text-align:center"><b>${w.techTime || ''}</b></td>
-            <td style="width:46%;padding:0">${Waybills.eSignBlock('Контролёр тех.сост. ТС', w.techName, w.date, w.techTime, w.techIssued, w.techExpires)}</td>
+            <td><div class="lbl">Разрешение №</div><div class="val">${w.permitNumber || w.permit || ''}</div></td>
         </tr>
     </table>
 
@@ -245,14 +215,14 @@ const Waybills = {
         </tr>
     </table>
 
-    <div class="memo"><b>ПАМЯТКА ВОДИТЕЛЮ</b> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы. При неисправностях (поломках, неработающих фонарях, повреждении колёс/шин, отсутствии документов) установить табличку «В ПАРК», прекратить заказы, вернуться в автопарк и сообщить мастеру.</div>
+    <div class="memo"><b>ПАМЯТКА ВОДИТЕЛЮ</b> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы.</div>
 
     <table>
         <tr>
             <td style="width:15%"><b>ВОДИТЕЛЬ:</b></td>
             <td style="width:50%"><b>${w.driverName || ''}</b></td>
             <td style="width:15%"><b>ПОДПИСЬ:</b></td>
-            <td style="width:20%"><span class="signature">${sig}</span></td>
+            <td style="width:20%">${sig}</td>
         </tr>
     </table>
 
@@ -265,23 +235,6 @@ const Waybills = {
             <td class="green-bg" style="text-align:center"><b>ОБЕД ОКОНЧЕН</b></td>
         </tr>
         <tr><td style="height:18px"></td><td></td><td></td><td></td></tr>
-    </table>
-
-    <table style="margin-top:3px">
-        <tr>
-            <td class="green-bg" style="width:30%"><b>ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР</b></td>
-            <td style="width:12%;height:24px"></td>
-            <td style="width:12%"></td>
-            <td style="width:46%"></td>
-        </tr>
-    </table>
-    <table style="margin-top:3px">
-        <tr>
-            <td class="green-bg" style="width:30%"><b>ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ ТЕХНИЧЕСКИЙ ОСМОТР</b></td>
-            <td style="width:12%;height:24px"></td>
-            <td style="width:12%"></td>
-            <td style="width:46%"></td>
-        </tr>
     </table>
 
     <table style="margin-top:3px">

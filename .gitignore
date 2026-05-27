@@ -32,3 +32,12 @@ node_modules/
 
 # Cloudflare
 .wrangler/
+
+# Локальные файлы (не для публичного репо)
+tokenAYTHNUMBER.txt
+prompt-analysis.txt
+whatsapp_chat/
+whatsapp_chat_extracted/
+дизайн.jpeg
+photo_*.jpg
+*.apk

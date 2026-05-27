@@ -9,11 +9,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-    <!-- Loading Page (показывается мгновенно пока Firebase проверяет auth) -->
+    <!-- Loading Page -->
     <div id="loading-page" class="page active">
         <div class="loading-container">
             <div class="loading-logo">
-                <i class="fas fa-bolt"></i>
+                <i class="fas fa-taxi"></i>
             </div>
             <div class="loading-spinner"></div>
             <p class="loading-text">AsemPro</p>
@@ -31,22 +31,25 @@
             <div class="login-card">
                 <div class="login-header">
                     <div class="logo-icon">
-                        <i class="fas fa-bolt"></i>
+                        <i class="fas fa-taxi"></i>
                     </div>
                     <h1>AsemPro</h1>
                     <p>Система управления таксопарком</p>
                 </div>
                 <form id="login-form">
                     <div class="form-group">
-                        <label for="login-email"><i class="fas fa-envelope"></i> Email</label>
-                        <input type="email" id="login-email" placeholder="admin@asempro.ru" required>
+                        <label for="login-phone"><i class="fas fa-phone"></i> Номер телефона</label>
+                        <input type="tel" id="login-phone" placeholder="+7 (999) 123-45-67" required>
                     </div>
-                    <div class="form-group">
-                        <label for="login-password"><i class="fas fa-lock"></i> Пароль</label>
-                        <input type="password" id="login-password" placeholder="Введите пароль" required>
+                    <div id="recaptcha-container-login"></div>
+                    <div id="sms-code-group" style="display:none">
+                        <div class="form-group">
+                            <label for="login-code"><i class="fas fa-key"></i> Код из SMS</label>
+                            <input type="text" id="login-code" placeholder="123456" maxlength="6">
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-full btn-glow">
-                        <i class="fas fa-arrow-right-to-bracket"></i> Войти в систему
+                    <button type="submit" id="login-btn" class="btn btn-primary btn-full btn-glow">
+                        <i class="fas fa-paper-plane"></i> <span id="login-btn-text">Отправить SMS</span>
                     </button>
                 </form>
                 <div id="login-error" class="error-message"></div>
@@ -60,16 +63,12 @@
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <i class="fas fa-bolt"></i>
+                    <i class="fas fa-taxi"></i>
                 </div>
                 <span class="sidebar-brand">AsemPro</span>
             </div>
             <ul class="sidebar-menu">
-                <li class="active" data-section="dashboard">
-                    <i class="fas fa-chart-pie"></i>
-                    <span>Дашборд</span>
-                </li>
-                <li data-section="drivers">
+                <li class="active" data-section="drivers">
                     <i class="fas fa-id-card"></i>
                     <span>Водители</span>
                 </li>
@@ -87,6 +86,10 @@
                 </li>
             </ul>
             <div class="sidebar-footer">
+                <div class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
+                    <i class="fas fa-moon" id="theme-icon"></i>
+                    <span id="theme-label">Тёмная тема</span>
+                </div>
                 <div class="admin-badge">
                     <i class="fas fa-shield-halved"></i>
                     <span id="admin-email-sidebar">Admin</span>
@@ -103,7 +106,7 @@
                     <button class="mobile-menu-btn" onclick="toggleSidebar()">
                         <i class="fas fa-bars"></i>
                     </button>
-                    <h2 id="page-title">Дашборд</h2>
+                    <h2 id="page-title">Водители</h2>
                 </div>
                 <div class="top-bar-right">
                     <div class="admin-info">
@@ -113,10 +116,19 @@
                 </div>
             </header>
 
-            <!-- Dashboard Section -->
-            <section id="section-dashboard" class="section active">
+            <!-- Drivers Section (default) -->
+            <section id="section-drivers" class="section active">
+                <div class="section-header">
+                    <div>
+                        <h3>Список водителей</h3>
+                        <p class="section-subtitle">Управление водителями таксопарка</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="showSection('add-driver')">
+                        <i class="fas fa-plus"></i> Добавить водителя
+                    </button>
+                </div>
                 <div class="stats-grid">
-                    <div class="stat-card stat-blue">
+                    <div class="stat-card stat-orange">
                         <div class="stat-icon"><i class="fas fa-users"></i></div>
                         <div class="stat-info">
                             <span class="stat-number" id="stat-drivers">0</span>
@@ -137,36 +149,13 @@
                             <span class="stat-label">Путевых листов</span>
                         </div>
                     </div>
-                    <div class="stat-card stat-purple">
+                    <div class="stat-card stat-red">
                         <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
                         <div class="stat-info">
                             <span class="stat-number" id="stat-today">0</span>
                             <span class="stat-label">Сегодня</span>
                         </div>
                     </div>
-                </div>
-                <div class="dashboard-grid">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><i class="fas fa-clock-rotate-left"></i> Последние действия</h3>
-                        </div>
-                        <div class="card-body" id="recent-activity">
-                            <p class="empty-text">Загрузка...</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Drivers Section -->
-            <section id="section-drivers" class="section">
-                <div class="section-header">
-                    <div>
-                        <h3>Список водителей</h3>
-                        <p class="section-subtitle">Управление водителями таксопарка</p>
-                    </div>
-                    <button class="btn btn-primary" onclick="showSection('add-driver')">
-                        <i class="fas fa-plus"></i> Добавить водителя
-                    </button>
                 </div>
                 <div class="table-container">
                     <table id="drivers-table">
@@ -176,6 +165,7 @@
                                 <th>Телефон</th>
                                 <th>Автомобиль</th>
                                 <th>Гос. номер</th>
+                                <th>Организация</th>
                                 <th>Статус</th>
                                 <th>Действия</th>
                             </tr>
@@ -202,28 +192,55 @@
                             <input type="text" id="driver-fullname" placeholder="Иванов Иван Иванович" required>
                         </div>
                         <div class="form-group">
-                            <label>Телефон</label>
+                            <label>Телефон (логин для входа в приложение)</label>
                             <input type="tel" id="driver-phone" placeholder="+7 (999) 123-45-67" required>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Email (для входа в приложение)</label>
-                            <input type="email" id="driver-email" placeholder="driver@asempro.ru" required>
+                            <label>Пароль (для входа в приложение)</label>
+                            <input type="text" id="driver-password" placeholder="Оставьте пустым — будут последние 6 цифр телефона" minlength="6">
                         </div>
-                        <div class="form-group">
-                            <label>Пароль (для входа)</label>
-                            <input type="text" id="driver-password" placeholder="Мин. 6 символов" required minlength="6">
-                        </div>
-                    </div>
-                    <div class="form-row">
                         <div class="form-group">
                             <label>СНИЛС</label>
                             <input type="text" id="driver-snils" placeholder="210-779-960 77">
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
                             <label>ИНН</label>
                             <input type="text" id="driver-inn" placeholder="632414204200">
+                        </div>
+                        <div class="form-group">
+                            <!-- зарезервировано под будущие поля -->
+                        </div>
+                    </div>
+
+                    <div class="form-section-title"><i class="fas fa-building"></i> Организация водителя</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Название организации</label>
+                            <input type="text" id="driver-org-name" placeholder='ООО "АсемПро"' required>
+                        </div>
+                        <div class="form-group">
+                            <label>ОГРН(ИП)</label>
+                            <input type="text" id="driver-org-ogrn" placeholder="1245000132541">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ИНН организации</label>
+                            <input type="text" id="driver-org-inn" placeholder="5038191219">
+                        </div>
+                        <div class="form-group">
+                            <label>Телефон организации</label>
+                            <input type="tel" id="driver-org-phone" placeholder="+79153955383">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Адрес организации</label>
+                            <input type="text" id="driver-org-address" placeholder="141205, Московская область, г.Пушкино, Набережная ул, д. 2а">
                         </div>
                     </div>
 
@@ -297,6 +314,29 @@
                             </select>
                         </div>
                     </div>
+
+                    <div class="form-section-title"><i class="fas fa-file-contract"></i> Реквизиты</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Форма по ОКУД</label>
+                            <input type="text" id="driver-okud" placeholder="0345001" value="0345001">
+                        </div>
+                        <div class="form-group">
+                            <label>Форма по ОКПО</label>
+                            <input type="text" id="driver-okpo" placeholder="36271045">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Номер разрешения</label>
+                            <input type="text" id="driver-permit" placeholder="509226">
+                        </div>
+                        <div class="form-group">
+                            <label>Приказ Минтранса</label>
+                            <input type="text" id="driver-mintrans" placeholder="390 ОТ 28.09.2022" value="390 ОТ 28.09.2022">
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary btn-glow">
                         <i class="fas fa-user-plus"></i> Зарегистрировать водителя
                     </button>
@@ -317,6 +357,7 @@
                             <tr>
                                 <th>Номер</th>
                                 <th>Водитель</th>
+                                <th>Организация</th>
                                 <th>Дата</th>
                                 <th>Статус</th>
                                 <th>Действия</th>
@@ -328,16 +369,17 @@
                 </div>
             </section>
 
-            <!-- Settings Section -->
+            <!-- Settings Section (simplified - no med/tech fields) -->
             <section id="section-settings" class="section">
                 <div class="section-header">
                     <div>
-                        <h3>Настройки компании</h3>
-                        <p class="section-subtitle">Данные организации для путевых листов</p>
+                        <h3>Настройки</h3>
+                        <p class="section-subtitle">Общие параметры системы</p>
                     </div>
                 </div>
                 <form id="settings-form" class="form-card">
-                    <div class="form-section-title"><i class="fas fa-building"></i> Организация</div>
+                    <div class="form-section-title"><i class="fas fa-building"></i> Организация по умолчанию</div>
+                    <p style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Эти данные используются как значения по умолчанию при создании нового водителя. У каждого водителя может быть своя организация.</p>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Название организации</label>
@@ -364,72 +406,6 @@
                             <input type="text" id="setting-address" placeholder="141205, Московская область, г.Пушкино, Набережная ул, д. 2а">
                         </div>
                     </div>
-                    <div class="form-section-title"><i class="fas fa-file-contract"></i> Реквизиты</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Форма по ОКУД</label>
-                            <input type="text" id="setting-okud" placeholder="0345001">
-                        </div>
-                        <div class="form-group">
-                            <label>Форма по ОКПО</label>
-                            <input type="text" id="setting-okpo" placeholder="36271045">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Номер разрешения</label>
-                            <input type="text" id="setting-permit" placeholder="509226">
-                        </div>
-                        <div class="form-group">
-                            <label>Приказ Минтранса</label>
-                            <input type="text" id="setting-mintrans" placeholder="390 ОТ 28.09.2022">
-                        </div>
-                    </div>
-
-                    <div class="form-section-title"><i class="fas fa-user-doctor"></i> Медицинский работник</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>ФИО мед. работника</label>
-                            <input type="text" id="setting-med-name" placeholder="Зайцева Ирина Владимировна">
-                        </div>
-                        <div class="form-group">
-                            <label>Номер сертификата (ЛО)</label>
-                            <input type="text" id="setting-med-cert" placeholder="ЛО-77-01-01-5309">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Дата выдачи сертификата</label>
-                            <input type="date" id="setting-med-issued">
-                        </div>
-                        <div class="form-group">
-                            <label>Действителен до</label>
-                            <input type="date" id="setting-med-expires">
-                        </div>
-                    </div>
-
-                    <div class="form-section-title"><i class="fas fa-wrench"></i> Контролёр тех. состояния</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>ФИО тех. контролёра</label>
-                            <input type="text" id="setting-tech-name" placeholder="Крепких Сергей Анатольевич">
-                        </div>
-                        <div class="form-group">
-                            <label>Номер сертификата</label>
-                            <input type="text" id="setting-tech-cert" placeholder="СМ079-465-368-3658">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Дата выдачи сертификата</label>
-                            <input type="date" id="setting-tech-issued">
-                        </div>
-                        <div class="form-group">
-                            <label>Действителен до</label>
-                            <input type="date" id="setting-tech-expires">
-                        </div>
-                    </div>
-
                     <button type="submit" class="btn btn-primary btn-glow">
                         <i class="fas fa-check-circle"></i> Сохранить настройки
                     </button>

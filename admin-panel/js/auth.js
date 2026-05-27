@@ -1,16 +1,18 @@
-// Authentication Module
+// Authentication Module - Phone Auth
 const Auth = {
     currentUser: null,
     _bootDone: false,
+    _confirmationResult: null,
+    _recaptchaVerifier: null,
+    _recaptchaRendered: false,
 
     init() {
-        // Если знаем что юзер был админом — сразу показываем дашборд (без ожидания Firebase)
         const cachedAdmin = localStorage.getItem('asempro_admin');
         if (cachedAdmin) {
             try {
                 const cached = JSON.parse(cachedAdmin);
-                if (cached && cached.email) {
-                    Auth._showDashboardShell(cached.email);
+                if (cached && cached.phone) {
+                    Auth._showDashboardShell(cached.phone);
                 }
             } catch (_) {}
         }
@@ -23,7 +25,7 @@ const Auth = {
                         Auth.currentUser = user;
                         localStorage.setItem('asempro_admin', JSON.stringify({
                             uid: user.uid,
-                            email: user.email
+                            phone: user.phoneNumber || user.email || 'Admin'
                         }));
                         Auth.showDashboard();
                     } else {
@@ -45,7 +47,7 @@ const Auth = {
 
         document.getElementById('login-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            Auth.login();
+            Auth.handleLogin();
         });
 
         document.getElementById('logout-btn').addEventListener('click', async () => {
@@ -53,7 +55,6 @@ const Auth = {
             await auth.signOut();
         });
 
-        // Если через 6 секунд Firebase не ответил — показываем логин (защита от зависания)
         setTimeout(() => {
             if (!Auth._bootDone && !Auth.currentUser) {
                 Auth.showLogin();
@@ -61,42 +62,96 @@ const Auth = {
         }, 6000);
     },
 
-    async login() {
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-        const btn = document.querySelector('#login-form button[type="submit"]');
+    _ensureRecaptcha() {
+        if (Auth._recaptchaVerifier) return;
+        Auth._recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container-login', {
+            size: 'invisible',
+            callback: () => {}
+        });
+    },
+
+    async handleLogin() {
+        const codeInput = document.getElementById('login-code');
+        if (Auth._confirmationResult && codeInput.value.trim()) {
+            await Auth.verifyCode();
+        } else {
+            await Auth.sendSms();
+        }
+    },
+
+    _formatPhone(raw) {
+        let phone = raw.replace(/[\s\(\)\-]/g, '');
+        if (phone.startsWith('8') && phone.length === 11) {
+            phone = '+7' + phone.substring(1);
+        }
+        if (!phone.startsWith('+')) phone = '+' + phone;
+        return phone;
+    },
+
+    async sendSms() {
+        const phoneRaw = document.getElementById('login-phone').value;
+        const phone = Auth._formatPhone(phoneRaw);
+        const btn = document.getElementById('login-btn');
         const originalContent = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Отправка...';
 
         try {
-            const result = await auth.signInWithEmailAndPassword(email, password);
+            Auth._ensureRecaptcha();
+            Auth._confirmationResult = await auth.signInWithPhoneNumber(phone, Auth._recaptchaVerifier);
+            document.getElementById('sms-code-group').style.display = 'block';
+            document.getElementById('login-btn-text').textContent = 'Подтвердить код';
+            document.getElementById('login-code').focus();
+        } catch (error) {
+            console.error('SMS error:', error);
+            let message = 'Ошибка отправки SMS';
+            if (error.code === 'auth/invalid-phone-number') {
+                message = 'Некорректный номер телефона';
+            } else if (error.code === 'auth/too-many-requests') {
+                message = 'Слишком много попыток. Попробуйте позже';
+            } else if (error.code === 'auth/captcha-check-failed') {
+                message = 'Ошибка проверки. Обновите страницу';
+            }
+            Auth.showError(message);
+            Auth._recaptchaVerifier = null;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    },
+
+    async verifyCode() {
+        const code = document.getElementById('login-code').value.trim();
+        if (!code || code.length < 6) {
+            Auth.showError('Введите 6-значный код из SMS');
+            return;
+        }
+        const btn = document.getElementById('login-btn');
+        const originalContent = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Проверка...';
+
+        try {
+            const result = await Auth._confirmationResult.confirm(code);
             const adminDoc = await db.collection('admins').doc(result.user.uid).get();
             if (!adminDoc.exists) {
                 await auth.signOut();
-                Auth.showError('У вас нет прав администратора');
+                Auth.showError('У вас нет прав администратора. Обратитесь к владельцу.');
+                Auth._confirmationResult = null;
+                document.getElementById('sms-code-group').style.display = 'none';
+                document.getElementById('login-btn-text').textContent = 'Отправить SMS';
                 return;
             }
-            // onAuthStateChanged покажет дашборд
         } catch (error) {
-            let message = 'Ошибка входа';
-            switch (error.code) {
-                case 'auth/user-not-found':
-                case 'auth/invalid-credential':
-                    message = 'Пользователь не найден';
-                    break;
-                case 'auth/wrong-password':
-                    message = 'Неверный пароль';
-                    break;
-                case 'auth/invalid-email':
-                    message = 'Некорректный email';
-                    break;
-                case 'auth/too-many-requests':
-                    message = 'Слишком много попыток. Попробуйте позже';
-                    break;
-                case 'auth/network-request-failed':
-                    message = 'Нет соединения с интернетом';
-                    break;
+            console.error('Code verify error:', error);
+            let message = 'Неверный код';
+            if (error.code === 'auth/invalid-verification-code') {
+                message = 'Неверный код из SMS';
+            } else if (error.code === 'auth/code-expired') {
+                message = 'Код истёк. Отправьте SMS заново';
+                Auth._confirmationResult = null;
+                document.getElementById('sms-code-group').style.display = 'none';
+                document.getElementById('login-btn-text').textContent = 'Отправить SMS';
             }
             Auth.showError(message);
         } finally {
@@ -105,23 +160,23 @@ const Auth = {
         }
     },
 
-    /** Быстрый показ оболочки дашборда из кэша до проверки Firebase */
-    _showDashboardShell(email) {
+    _showDashboardShell(display) {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.remove('active');
         document.getElementById('dashboard-page').classList.add('active');
-        document.getElementById('admin-email').textContent = email;
-        const sidebarEmail = document.getElementById('admin-email-sidebar');
-        if (sidebarEmail) sidebarEmail.textContent = email;
+        document.getElementById('admin-email').textContent = display;
+        const sidebarEl = document.getElementById('admin-email-sidebar');
+        if (sidebarEl) sidebarEl.textContent = display;
     },
 
     showDashboard() {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.remove('active');
         document.getElementById('dashboard-page').classList.add('active');
-        document.getElementById('admin-email').textContent = Auth.currentUser.email;
-        const sidebarEmail = document.getElementById('admin-email-sidebar');
-        if (sidebarEmail) sidebarEmail.textContent = Auth.currentUser.email;
+        const display = Auth.currentUser.phoneNumber || Auth.currentUser.email || 'Admin';
+        document.getElementById('admin-email').textContent = display;
+        const sidebarEl = document.getElementById('admin-email-sidebar');
+        if (sidebarEl) sidebarEl.textContent = display;
         Drivers.loadDrivers();
         Waybills.loadWaybills();
         Settings.loadSettings();
@@ -132,6 +187,9 @@ const Auth = {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.add('active');
         document.getElementById('dashboard-page').classList.remove('active');
+        Auth._confirmationResult = null;
+        document.getElementById('sms-code-group').style.display = 'none';
+        document.getElementById('login-btn-text').textContent = 'Отправить SMS';
     },
 
     showError(message) {
