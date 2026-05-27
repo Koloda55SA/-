@@ -138,7 +138,11 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
       ),
       dividerColor: border,
-      fontFamily: 'Roboto',
+      textTheme: base.textTheme.apply(
+        fontFamily: 'Roboto',
+        bodyColor: text,
+        displayColor: text,
+      ),
     );
   }
 }
