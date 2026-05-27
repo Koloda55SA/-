@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../theme/app_theme.dart';
+
 class SignatureScreen extends StatefulWidget {
   const SignatureScreen({super.key});
 
@@ -48,6 +50,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.bg,
       appBar: AppBar(
         title: const Text('Подпись водителя'),
         actions: [

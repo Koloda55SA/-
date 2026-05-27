@@ -11,6 +11,31 @@ const Drivers = {
             e.preventDefault();
             Drivers.addDriver();
         });
+        // Автозаполнение организации из настроек по умолчанию
+        Drivers._prefillOrgFromSettings();
+    },
+
+    // Подставляет данные организации в форму "Новый водитель" из settings/company,
+    // если поля пустые. Так админу не нужно каждый раз вбивать одну и ту же организацию.
+    async _prefillOrgFromSettings() {
+        try {
+            const doc = await db.collection('settings').doc('company').get();
+            if (!doc.exists) return;
+            const data = doc.data() || {};
+            const map = {
+                'driver-org-name':    data.orgName,
+                'driver-org-ogrn':    data.ogrn,
+                'driver-org-inn':     data.inn,
+                'driver-org-phone':   data.phone,
+                'driver-org-address': data.address,
+            };
+            for (const [id, value] of Object.entries(map)) {
+                const el = document.getElementById(id);
+                if (el && !el.value && value) el.value = value;
+            }
+        } catch (e) {
+            console.warn('Cannot prefill org from settings:', e);
+        }
     },
 
     // Нормализуем номер телефона к формату "+79991234567"
@@ -236,17 +261,21 @@ const Drivers = {
             return;
         }
         try {
-            // Через secondary app: входим со старым паролем не получится (мы его не знаем).
-            // Поэтому пишем заявку на сброс, которую обработает Cloud Function (или вручную через Firebase Console).
+            // ВАЖНО: пароль НЕ сохраняем в Firestore.
+            // Создаём только заявку с метаданными — Cloud Function (Admin SDK)
+            // принимает её, генерирует пароль и обновляет Firebase Auth напрямую.
+            // Если функции ещё нет, админ применяет новый пароль вручную в Firebase Console
+            // (ниже мы покажем подсказку с одноразовым паролем только в браузере).
             await db.collection('passwordResets').add({
                 driverId: driver.id,
                 authEmail: driver.authEmail || Drivers._phoneToEmail(phone),
-                newPassword: password,
+                phone: phone,
                 requestedBy: Auth.currentUser.uid,
                 requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 status: 'pending'
             });
-            showToast(`Заявка на смену пароля создана. Новый пароль: ${password}\n(Применит Cloud Function или админ вручную)`, 'success');
+            // Пароль показываем только в UI один раз — нигде не сохраняем.
+            showToast(`Заявка создана. Сообщите водителю пароль: ${password}`, 'success');
         } catch (e) {
             console.error('Reset password error:', e);
             showToast('Ошибка: ' + e.message, 'error');

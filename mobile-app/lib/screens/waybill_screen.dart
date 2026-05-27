@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+
+import '../theme/app_theme.dart';
 import '../services/waybill_pdf_service.dart';
 import 'waybill_preview_screen.dart';
 import 'signature_screen.dart';
@@ -11,6 +13,9 @@ import 'signature_screen.dart';
 /// Возвращает текущее время в МСК (UTC+3), независимо от часового пояса устройства.
 DateTime _moscowNow() => DateTime.now().toUtc().add(const Duration(hours: 3));
 
+/// Экран создания путевого листа. Водитель НЕ видит и НЕ редактирует
+/// служебные времена (медосмотр / техконтроль / выезд и т.п.) — они
+/// расставляются автоматически в момент генерации.
 class WaybillScreen extends StatefulWidget {
   final Map<String, dynamic> driverData;
   final String driverDocId;
@@ -26,177 +31,219 @@ class _WaybillScreenState extends State<WaybillScreen> {
   final _odometerController = TextEditingController();
   Uint8List? _signatureImage;
 
-  // Все времена в МСК. Фиксированные отступы по требованию заказчика:
-  //   Медосмотр   = сейчас - 30 минут
-  //   Техконтроль = медосмотр + 5 минут
-  //   Начало смены / выезд = техконтроль + 7 минут (т.е. медосмотр + 12 минут)
-  //   Окончание смены = начало смены + 12 часов
-  late DateTime _now;
-  late DateTime _medDt;
-  late DateTime _techDt;
-  late DateTime _shiftStartDt;
-  late DateTime _departureDt;
-  late DateTime _shiftEndDt;
-  late DateTime _expiresAtDt;
-
-  @override
-  void initState() {
-    super.initState();
-    _computeTimes();
-  }
-
-  void _computeTimes() {
-    _now = _moscowNow();
-    _medDt = _now.subtract(const Duration(minutes: 30));
-    _techDt = _medDt.add(const Duration(minutes: 5));
-    _shiftStartDt = _techDt.add(const Duration(minutes: 7));
-    _departureDt = _shiftStartDt;
-    _shiftEndDt = _shiftStartDt.add(const Duration(hours: 12));
-    _expiresAtDt = _shiftEndDt;
-  }
-
   @override
   Widget build(BuildContext context) {
     final driver = widget.driverData;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Новый путевой лист')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Driver info card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Данные для путевого листа', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  _infoRow('Дата', DateFormat('dd.MM.yyyy').format(_now)),
-                  _infoRow('Водитель', driver['fullName']?.toString() ?? ''),
-                  _infoRow('Автомобиль', '${driver['carModel'] ?? ''} (${driver['plateNumber'] ?? ''})'),
-                  _infoRow('Организация', driver['orgName']?.toString() ?? ''),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    'Действует до',
-                    '${DateFormat('dd.MM.yyyy').format(_expiresAtDt)} ${_formatHms(_expiresAtDt).substring(0, 5)}',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
+    final today = DateFormat('dd.MM.yyyy').format(_moscowNow());
 
-            // Odometer input
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      appBar: AppBar(title: const Text('Новый путевой лист')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          children: [
+            // ─── Сводка
+            AppCard(
+              padding: const EdgeInsets.all(18),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1B1408), Color(0xFF120E0A)],
               ),
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Заполните данные', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.description, color: Colors.white, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Сводка путевого листа',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _odometerController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Показание одометра (км)',
-                      helperText: 'В путевом листе будет записано на 10 км меньше',
-                      helperStyle: TextStyle(color: Color(0xFF8A8A8A), fontSize: 11),
-                      prefixIcon: Icon(Icons.speed, color: Color(0xFFFF8C00)),
+                  _row(Icons.calendar_today_outlined, 'Дата', today),
+                  _row(Icons.person_outline, 'Водитель', (driver['fullName'] ?? '').toString()),
+                  _row(
+                    Icons.directions_car_outlined,
+                    'Автомобиль',
+                    '${driver['carModel'] ?? ''} (${driver['plateNumber'] ?? ''})',
+                  ),
+                  _row(Icons.business_outlined, 'Организация', (driver['orgName'] ?? '').toString()),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.info.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.info.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: AppTheme.info, size: 14),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Лист действителен 12 часов после создания',
+                            style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
+
             const SizedBox(height: 16),
 
-            // Signature
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
-              ),
+            // ─── Одометр
+            AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Подпись водителя', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: const [
+                      Icon(Icons.speed, color: AppTheme.primary, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Одометр',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _odometerController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 16),
+                    decoration: const InputDecoration(
+                      labelText: 'Показание (км)',
+                      hintText: 'Например, 152340',
+                      prefixIcon: Icon(Icons.speed, color: AppTheme.primary, size: 20),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: const [
+                      Icon(Icons.lightbulb_outline, size: 12, color: AppTheme.textFaint),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'В путевом листе будет указано на 10 км меньше',
+                          style: TextStyle(color: AppTheme.textFaint, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ─── Подпись
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.draw_outlined, color: AppTheme.primary, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Подпись водителя',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   if (_signatureImage != null)
                     Container(
                       width: double.infinity,
-                      height: 100,
+                      height: 110,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Image.memory(_signatureImage!, fit: BoxFit.contain),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(_signatureImage!, fit: BoxFit.contain),
+                      ),
                     )
                   else
                     Container(
                       width: double.infinity,
-                      height: 100,
+                      height: 110,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111111),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                        color: AppTheme.bgSoft,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
                       ),
                       child: const Center(
-                        child: Text('Подпись не добавлена', style: TextStyle(color: Color(0xFF8A8A8A))),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.gesture, color: AppTheme.textFaint, size: 32),
+                            SizedBox(height: 6),
+                            Text(
+                              'Подпись не добавлена',
+                              style: TextStyle(color: AppTheme.textFaint, fontSize: 12),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final result = await Navigator.push<Uint8List>(
-                          context,
-                          MaterialPageRoute(builder: (_) => const SignatureScreen()),
-                        );
-                        if (result != null && mounted) {
-                          setState(() => _signatureImage = result);
-                        }
-                      },
-                      icon: const Icon(Icons.draw, color: Color(0xFFFF8C00)),
-                      label: Text(_signatureImage != null ? 'Изменить подпись' : 'Добавить подпись'),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFFF8C00)),
-                        foregroundColor: const Color(0xFFFF8C00),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final result = await Navigator.push<Uint8List>(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SignatureScreen()),
+                      );
+                      if (result != null && mounted) {
+                        setState(() => _signatureImage = result);
+                      }
+                    },
+                    icon: const Icon(Icons.draw, color: AppTheme.primary, size: 18),
+                    label: Text(_signatureImage != null ? 'Изменить подпись' : 'Добавить подпись'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
 
-            // Generate button
+            const SizedBox(height: 22),
+
+            // ─── Сгенерировать
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
                 onPressed: _isGenerating ? null : _generateWaybill,
                 icon: _isGenerating
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.picture_as_pdf, size: 28),
-                label: Text(_isGenerating ? 'Генерация...' : 'Сгенерировать путевой лист', style: const TextStyle(fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF8C00),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                    : const Icon(Icons.picture_as_pdf, size: 22),
+                label: Text(
+                  _isGenerating ? 'Генерация...' : 'Сгенерировать путевой лист',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -206,58 +253,86 @@ class _WaybillScreenState extends State<WaybillScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _row(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFF8A8A8A), fontSize: 14)),
-          Flexible(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+          Icon(icon, size: 14, color: AppTheme.textMuted),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  String _formatHms(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:'
-      '${dt.minute.toString().padLeft(2, '0')}:'
-      '${dt.second.toString().padLeft(2, '0')}';
-
+  // ===== Генерация =====
   Future<void> _generateWaybill() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) { _showError('Сессия истекла. Войдите снова.'); return; }
+    if (user == null) {
+      _showError('Сессия истекла. Войдите снова.');
+      return;
+    }
 
     final odometerInput = _odometerController.text.trim();
-    if (odometerInput.isEmpty) { _showError('Введите показание одометра'); return; }
+    if (odometerInput.isEmpty) {
+      _showError('Введите показание одометра');
+      return;
+    }
     final odometerEntered = int.tryParse(odometerInput);
     if (odometerEntered == null || odometerEntered <= 0) {
       _showError('Введите корректное число для одометра');
       return;
     }
-    // Заказчик: автоматически "откатить" одометр на 10 км назад.
     final odometerAdjusted = odometerEntered - 10;
 
     setState(() => _isGenerating = true);
 
     try {
-      // Пересчитываем времена на момент генерации, чтобы они не "устарели",
-      // если экран был открыт долго.
-      _computeTimes();
-      final waybillNumber = '${_now.millisecondsSinceEpoch ~/ 1000}';
+      // ВНУТРЕННЕЕ РАСЧЁТНОЕ ВРЕМЯ.
+      // Водитель этого не видит — это служебные значения только для PDF.
+      final now = _moscowNow();
+      final medDt = now.subtract(const Duration(minutes: 30));
+      final techDt = medDt.add(const Duration(minutes: 5));
+      final shiftStartDt = techDt.add(const Duration(minutes: 7));
+      final departureDt = shiftStartDt;
+      final shiftEndDt = shiftStartDt.add(const Duration(hours: 12));
+      final expiresAtDt = shiftEndDt;
+
+      final waybillNumber = '${now.millisecondsSinceEpoch ~/ 1000}';
 
       String s(Map<String, dynamic> m, String key) {
         final v = m[key];
         return v == null ? '' : v.toString();
       }
 
-      final driver = widget.driverData;
+      String fmtHms(DateTime dt) =>
+          '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}:'
+          '${dt.second.toString().padLeft(2, '0')}';
 
-      // Use per-driver organization data (set during admin registration)
+      String monthName(int m) {
+        const months = [
+          '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+          'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+        ];
+        return months[m];
+      }
+
+      final driver = widget.driverData;
       final waybillData = <String, dynamic>{
         'waybillNumber': waybillNumber,
-        'date': DateFormat('dd.MM.yyyy').format(_now),
-        'dateFormatted': '«${DateFormat('dd').format(_now)}» ${_getMonthName(_now.month)} ${_now.year} г.',
+        'date': DateFormat('dd.MM.yyyy').format(now),
+        'dateFormatted': '«${DateFormat('dd').format(now)}» ${monthName(now.month)} ${now.year} г.',
         'driverId': widget.driverDocId,
         'authUid': user.uid,
         'driverName': s(driver, 'fullName'),
@@ -276,7 +351,6 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'driverInn': s(driver, 'inn'),
         'transportType': s(driver, 'transportType'),
         'commType': s(driver, 'commType'),
-        // Per-driver organization data
         'orgName': s(driver, 'orgName'),
         'orgAddress': s(driver, 'orgAddress'),
         'ogrn': s(driver, 'orgOgrn'),
@@ -286,7 +360,6 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'okpo': s(driver, 'okpo'),
         'permitNumber': s(driver, 'permit'),
         'mintransOrder': '390 ОТ 28.09.2022',
-        // Electronic signatures from driver org data
         'medName': s(driver, 'medName'),
         'medCert': s(driver, 'medCert'),
         'medIssued': s(driver, 'medIssued'),
@@ -295,46 +368,37 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'techCert': s(driver, 'techCert'),
         'techIssued': s(driver, 'techIssued'),
         'techExpires': s(driver, 'techExpires'),
-        // Одометр (с автоматическим откатом -10 км по требованию заказчика)
         'odometerStart': odometerAdjusted.toString(),
-        // Времена в МСК с фиксированными отступами
-        'medTime': _formatHms(_medDt),
-        'techTime': _formatHms(_techDt),
-        'shiftStart': _formatHms(_shiftStartDt),
-        'departureTime': _formatHms(_departureDt),
-        'shiftEnd': _formatHms(_shiftEndDt),
+        // Времена служебные — водитель их не видит, они нужны только для печати
+        'medTime': fmtHms(medDt),
+        'techTime': fmtHms(techDt),
+        'shiftStart': fmtHms(shiftStartDt),
+        'departureTime': fmtHms(departureDt),
+        'shiftEnd': fmtHms(shiftEndDt),
         'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
-        // Путевой лист действителен 12 часов от начала смены
-        'expiresAt': Timestamp.fromDate(_expiresAtDt.toUtc()),
+        'expiresAt': Timestamp.fromDate(expiresAtDt.toUtc()),
       };
 
-      // Подпись водителя сохраняем как base64 data URL (совместимо с веб-печатью).
       if (_signatureImage != null) {
-        final b64 = base64Encode(_signatureImage!);
-        waybillData['signatureData'] = 'data:image/png;base64,$b64';
+        waybillData['signatureData'] = 'data:image/png;base64,${base64Encode(_signatureImage!)}';
       }
 
-      // Сохраняем в Firestore (без локальных служебных полей)
       await FirebaseFirestore.instance.collection('waybills').add(waybillData);
 
-      // Для PDF добавляем bytes напрямую, чтобы не декодировать base64 заново
       if (_signatureImage != null) {
         waybillData['_signatureBytes'] = _signatureImage;
       }
 
-      // Generate PDF
       final pdfBytes = await WaybillPdfService.generateBytes(waybillData);
-
       if (!mounted) return;
 
-      await Navigator.push(context, MaterialPageRoute(
-        builder: (_) => WaybillPreviewScreen(pdfBytes: pdfBytes, waybillNumber: waybillNumber),
-      ));
-
-      if (mounted) {
-        Navigator.pop(context); // Return to home
-      }
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WaybillPreviewScreen(pdfBytes: pdfBytes, waybillNumber: waybillNumber),
+        ),
+      );
     } on FirebaseException catch (e) {
       _showError('Ошибка Firebase: ${e.message ?? e.code}');
     } catch (e, st) {
@@ -348,14 +412,8 @@ class _WaybillScreenState extends State<WaybillScreen> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      SnackBar(content: Text(msg), backgroundColor: AppTheme.danger),
     );
-  }
-
-  String _getMonthName(int month) {
-    const months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-    return months[month];
   }
 
   @override

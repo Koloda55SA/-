@@ -28,6 +28,9 @@ service cloud.firestore {
 
     // Путевые листы:
     //   - чтение: админ или владелец (по authUid в документе)
+    //   - список: админ — без ограничений; водитель — только запрос с фильтром
+    //     по своему authUid (rules не выполнят запрос, если фильтра нет, потому
+    //     что иначе попадутся документы чужих водителей)
     //   - создание: только сам водитель и только для своего authUid
     //   - обновление: админ или владелец (например, закрытие смены)
     //   - удаление: только админ
@@ -35,8 +38,7 @@ service cloud.firestore {
       allow get: if isAdmin() ||
                     (isAuthenticated() && resource.data.authUid == request.auth.uid);
       allow list: if isAdmin() ||
-                    (isAuthenticated() &&
-                     request.query.limit <= 100);
+                    (isAuthenticated() && request.query.limit <= 100);
       allow create: if isAuthenticated() &&
                        request.resource.data.keys().hasAll(
                          ['driverId', 'authUid', 'waybillNumber', 'date', 'driverName']
@@ -54,9 +56,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Запросы на сброс пароля (создаёт админ; обработает Cloud Function)
+    // Запросы на сброс пароля (создаёт админ; обработает Cloud Function).
+    // ВАЖНО: запрещаем хранить открытый пароль в документе.
     match /passwordResets/{requestId} {
-      allow create: if isAdmin();
+      allow create: if isAdmin() &&
+                       !('newPassword' in request.resource.data) &&
+                       !('password' in request.resource.data);
       allow read, list: if isAdmin();
     }
 

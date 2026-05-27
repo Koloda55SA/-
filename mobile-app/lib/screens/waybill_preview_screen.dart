@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
+import '../theme/app_theme.dart';
+
 class WaybillPreviewScreen extends StatelessWidget {
   final Uint8List pdfBytes;
   final String waybillNumber;
@@ -70,10 +72,9 @@ class WaybillPreviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.bg,
       appBar: AppBar(
         title: Text('АП №$waybillNumber'),
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
       ),
       body: Column(
         children: [

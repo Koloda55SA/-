@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../theme/app_theme.dart';
+
 /// Экран входа водителя.
 /// Логин — номер телефона, пароль задаётся админом при регистрации.
 /// Под капотом используется Firebase Email Auth с синтетическим email
@@ -100,146 +102,194 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0A0A0A), Color(0xFF141414)],
+      body: Stack(
+        children: [
+          // Фоновые «световые пятна»
+          Positioned(
+            top: -120,
+            right: -80,
+            child: _glowBlob(280, AppTheme.primary.withValues(alpha: 0.18)),
           ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logo
-                Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF8C00), Color(0xFFFF6B00)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF8C00).withValues(alpha: 0.35),
-                        blurRadius: 32, spreadRadius: 0,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.local_taxi, color: Colors.white, size: 40),
-                ),
-                const SizedBox(height: 20),
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Color(0xFFFF8C00), Color(0xFFFFB800)],
-                  ).createShader(bounds),
-                  child: const Text(
-                    'ASEM PRO',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Электронные путевые листы',
-                  style: TextStyle(color: Color(0xFF8A8A8A), fontSize: 14),
-                ),
-                const SizedBox(height: 40),
+          Positioned(
+            bottom: -100,
+            left: -60,
+            child: _glowBlob(260, AppTheme.primaryDeep.withValues(alpha: 0.16)),
+          ),
 
-                // Card
-                Container(
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF2A2A2A)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Вход в аккаунт',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Используйте номер и пароль, который выдал администратор',
-                        style: TextStyle(color: Color(0xFF8A8A8A), fontSize: 12),
-                      ),
-                      const SizedBox(height: 24),
-                      TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Номер телефона',
-                          hintText: '+7 999 123-45-67',
-                          prefixIcon: Icon(Icons.phone, color: Color(0xFFFF8C00)),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        decoration: InputDecoration(
-                          labelText: 'Пароль',
-                          hintText: 'Минимум 6 символов',
-                          prefixIcon: const Icon(Icons.lock, color: Color(0xFFFF8C00)),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                              color: const Color(0xFF8A8A8A),
-                            ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 16),
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        gradient: AppTheme.primaryGradient,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primary.withValues(alpha: 0.4),
+                            blurRadius: 36,
                           ),
-                        ),
-                        onSubmitted: (_) => _signIn(),
+                        ],
                       ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 12),
+                      child: const Icon(Icons.local_taxi, color: Colors.white, size: 44),
+                    ),
+                    const SizedBox(height: 22),
+                    ShaderMask(
+                      shaderCallback: (b) => AppTheme.titleGradient.createShader(b),
+                      child: const Text(
+                        'ASEM PRO',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.6,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Электронные путевые листы',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 14),
+                    ),
+                    const SizedBox(height: 36),
+                    AppCard(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Добро пожаловать',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.text,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Войдите по номеру и паролю, который выдал администратор',
+                            style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
+                          ),
+                          const SizedBox(height: 24),
+                          TextField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            style: const TextStyle(fontSize: 16),
+                            decoration: const InputDecoration(
+                              labelText: 'Номер телефона',
+                              hintText: '+7 999 123-45-67',
+                              prefixIcon: Icon(Icons.phone, color: AppTheme.primary, size: 20),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            style: const TextStyle(fontSize: 16),
+                            decoration: InputDecoration(
+                              labelText: 'Пароль',
+                              hintText: 'Минимум 6 символов',
+                              prefixIcon: const Icon(Icons.lock, color: AppTheme.primary, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                                  color: AppTheme.textMuted,
+                                  size: 20,
+                                ),
+                                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                              ),
+                            ),
+                            onSubmitted: (_) => _signIn(),
+                          ),
+                          if (_errorMessage != null) ...[
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppTheme.danger.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppTheme.danger.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.error_outline, color: AppTheme.danger, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _errorMessage!,
+                                      style: const TextStyle(color: AppTheme.danger, fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 22),
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _signIn,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                  )
+                                : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('Войти', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                                      SizedBox(width: 8),
+                                      Icon(Icons.arrow_forward, size: 18),
+                                    ],
+                                  ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Center(
+                            child: Text(
+                              'Забыли пароль? Обратитесь к администратору',
+                              style: TextStyle(color: AppTheme.textFaint, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.shield_outlined, size: 14, color: AppTheme.textFaint),
+                        const SizedBox(width: 6),
                         Text(
-                          _errorMessage!,
-                          style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13),
-                          textAlign: TextAlign.center,
+                          'Безопасное соединение',
+                          style: TextStyle(color: AppTheme.textFaint, fontSize: 12),
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _signIn,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF8C00),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 22, width: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Text(
-                                  'Войти',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Если забыли пароль — обратитесь к администратору таксопарка',
-                        style: TextStyle(color: Color(0xFF6B6B6B), fontSize: 11),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _glowBlob(double size, Color color) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0)],
+            stops: const [0, 1],
           ),
         ),
       ),

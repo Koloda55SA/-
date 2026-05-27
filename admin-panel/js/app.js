@@ -2,11 +2,13 @@
 
 function showSection(sectionName) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.getElementById(`section-${sectionName}`).classList.add('active');
+    const target = document.getElementById(`section-${sectionName}`);
+    if (target) target.classList.add('active');
     document.querySelectorAll('.sidebar-menu li').forEach(li => {
         li.classList.toggle('active', li.dataset.section === sectionName);
     });
     const titles = {
+        'menu': 'Меню',
         'drivers': 'Водители',
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
@@ -14,6 +16,16 @@ function showSection(sectionName) {
     };
     document.getElementById('page-title').textContent = titles[sectionName] || '';
     if (window.innerWidth <= 1024) closeSidebar();
+
+    // При переходе на форму нового водителя подтягиваем данные организации из настроек
+    if (sectionName === 'add-driver' && typeof Drivers !== 'undefined') {
+        Drivers._prefillOrgFromSettings();
+    }
+
+    // Обновляем статистику при заходе в "Меню"
+    if (sectionName === 'menu') {
+        updateDashboard();
+    }
 }
 
 function toggleSidebar() {

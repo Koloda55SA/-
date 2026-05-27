@@ -26,13 +26,17 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.27.4'
           channel: 'stable'
           cache: true
 
       - name: Get dependencies
         working-directory: mobile-app
         run: flutter pub get
+
+      - name: Analyze (non-blocking)
+        working-directory: mobile-app
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos || true
 
       - name: Build APK
         working-directory: mobile-app
