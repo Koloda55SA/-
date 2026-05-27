@@ -41,3 +41,8 @@ whatsapp_chat_extracted/
 дизайн.jpeg
 photo_*.jpg
 *.apk
+
+# Локальные заметки для AI-агентов и владельца — НЕ КОММИТИТЬ
+_ai_local/
+баги*/
+*баги*/
