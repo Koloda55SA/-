@@ -62,7 +62,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Нарисуйте подпись в поле ниже',
+              'Нарисуйте подпись пальцем в белом поле ниже',
               style: TextStyle(color: Color(0xFF8A8A8A), fontSize: 14),
             ),
           ),
@@ -72,17 +72,18 @@ class _SignatureScreenState extends State<SignatureScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: RepaintBoundary(
-                    key: _repaintKey,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: RepaintBoundary(
+                  key: _repaintKey,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
+                    ),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onPanStart: (details) {
                         setState(() {
                           _currentStroke = [details.localPosition];
@@ -94,13 +95,14 @@ class _SignatureScreenState extends State<SignatureScreen> {
                           _currentStroke.add(details.localPosition);
                         });
                       },
-                      onPanEnd: (details) {
+                      onPanEnd: (_) {
                         _currentStroke = [];
                       },
                       child: CustomPaint(
-                        painter: _SignaturePainter(strokes: _strokes),
+                        // foregroundPainter рисуется ПОВЕРХ child — мазки видны на белом фоне.
+                        foregroundPainter: _SignaturePainter(strokes: _strokes),
                         size: Size.infinite,
-                        child: Container(color: Colors.white),
+                        child: const SizedBox.expand(),
                       ),
                     ),
                   ),
@@ -159,11 +161,19 @@ class _SignaturePainter extends CustomPainter {
       ..color = const Color(0xFF1A4E8E)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
+      ..strokeWidth = 3.5
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
 
     for (final stroke in strokes) {
-      if (stroke.length < 2) continue;
+      if (stroke.isEmpty) continue;
+      if (stroke.length == 1) {
+        // Одиночный тап — рисуем точку
+        canvas.drawCircle(stroke.first, paint.strokeWidth / 2, Paint()
+          ..color = paint.color
+          ..isAntiAlias = true);
+        continue;
+      }
       final path = Path();
       path.moveTo(stroke[0].dx, stroke[0].dy);
       for (int i = 1; i < stroke.length; i++) {
