@@ -12,6 +12,7 @@ function showSection(sectionName) {
         'drivers': 'Водители',
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
+        'requests': 'Заявки',
         'settings': 'Настройки'
     };
     document.getElementById('page-title').textContent = titles[sectionName] || '';
@@ -25,6 +26,11 @@ function showSection(sectionName) {
     // Обновляем статистику при заходе в "Меню"
     if (sectionName === 'menu') {
         updateDashboard();
+    }
+
+    // Подгружаем заявки на дополнительные ЭПЛ
+    if (sectionName === 'requests' && typeof Requests !== 'undefined') {
+        Requests.load();
     }
 }
 
@@ -116,6 +122,14 @@ document.addEventListener('DOMContentLoaded', () => {
     Settings.init();
 
     document.querySelectorAll('.sidebar-menu li').forEach(item => {
-        item.addEventListener('click', () => showSection(item.dataset.section));
+        item.addEventListener('click', () => {
+            const section = item.dataset.section;
+            // «Новый водитель» всегда открывает пустую форму (сбрасывает режим редактирования).
+            if (section === 'add-driver' && typeof Drivers !== 'undefined') {
+                Drivers.newDriver();
+            } else {
+                showSection(section);
+            }
+        });
     });
 });

@@ -7,7 +7,6 @@ import 'waybill_screen.dart';
 import 'waybill_preview_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
-import 'waybill_history_screen.dart';
 import '../services/waybill_pdf_service.dart';
 
 /// Главный экран после входа: «дом» (новый ЭПЛ + активный лист),
@@ -29,7 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _DashboardPage(driverData: widget.driverData, driverDocId: widget.driverDocId),
-      WaybillHistoryScreen(driverDocId: widget.driverDocId),
       ProfileScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
       SettingsScreen(driverData: widget.driverData),
     ];
@@ -60,13 +58,128 @@ class _DashboardPageState extends State<_DashboardPage> {
   Map<String, dynamic>? _activeWaybill;
   String? _activeWaybillId;
   bool _loadingActive = true;
-  int _totalWaybills = 0;
+  int _usedQuota = 0;
+  bool _requestPending = false;
+
+  /// Лимит выпуска ЭПЛ для водителя (по умолчанию 60).
+  int get _quotaLimit {
+    final v = widget.driverData['waybillLimit'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return 60;
+  }
+
+  bool get _quotaExhausted => _usedQuota >= _quotaLimit;
 
   @override
   void initState() {
     super.initState();
     _refreshActive();
-    _loadStats();
+    _loadQuota();
+  }
+
+  Future<void> _loadQuota() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final counter = await FirebaseFirestore.instance
+          .collection('driverCounters')
+          .doc(user.uid)
+          .get();
+      int used = 0;
+      final c = counter.data()?['count'];
+      if (c is int) used = c;
+      if (c is num) used = c.toInt();
+
+      final pending = await FirebaseFirestore.instance
+          .collection('quotaRequests')
+          .where('authUid', isEqualTo: user.uid)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+      setState(() {
+        _usedQuota = used;
+        _requestPending = pending.docs.isNotEmpty;
+      });
+    } catch (e) {
+      debugPrint('Quota load error: $e');
+    }
+  }
+
+  Future<void> _requestMoreQuota() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('quotaRequests').add({
+        'driverId': widget.driverDocId,
+        'authUid': user.uid,
+        'driverName': (widget.driverData['fullName'] ?? '').toString(),
+        'phone': (widget.driverData['phone'] ?? '').toString(),
+        'orgName': (widget.driverData['orgName'] ?? '').toString(),
+        'currentLimit': _quotaLimit,
+        'used': _usedQuota,
+        'status': 'pending',
+        'requestedAt': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      setState(() => _requestPending = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Заявка на +60 ЭПЛ отправлена администратору'),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка отправки заявки: $e'), backgroundColor: AppTheme.danger),
+      );
+    }
+  }
+
+  Future<void> _onCreateWaybill() async {
+    if (_quotaExhausted) {
+      await _showQuotaDialog();
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WaybillScreen(
+          driverData: widget.driverData,
+          driverDocId: widget.driverDocId,
+        ),
+      ),
+    );
+    await _refreshActive();
+    await _loadQuota();
+  }
+
+  Future<void> _showQuotaDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Лимит ЭПЛ исчерпан'),
+        content: Text(
+          _requestPending
+              ? 'Вы использовали все $_quotaLimit ЭПЛ. Заявка на дополнительные листы уже отправлена — дождитесь подтверждения администратора.'
+              : 'Вы использовали все $_quotaLimit ЭПЛ. Отправить администратору заявку на дополнительные 60 листов?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+          if (!_requestPending)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _requestMoreQuota();
+              },
+              child: const Text('Отправить заявку'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _refreshActive() async {
@@ -93,22 +206,6 @@ class _DashboardPageState extends State<_DashboardPage> {
     } catch (e) {
       debugPrint('Active waybill check error: $e');
       if (mounted) setState(() => _loadingActive = false);
-    }
-  }
-
-  Future<void> _loadStats() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final snap = await FirebaseFirestore.instance
-          .collection('waybills')
-          .where('authUid', isEqualTo: user.uid)
-          .limit(100)
-          .get();
-      if (!mounted) return;
-      setState(() => _totalWaybills = snap.size);
-    } catch (e) {
-      debugPrint('Stats load error: $e');
     }
   }
 
@@ -149,7 +246,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       child: RefreshIndicator(
         onRefresh: () async {
           await _refreshActive();
-          await _loadStats();
+          await _loadQuota();
         },
         color: AppTheme.primary,
         child: ListView(
@@ -208,9 +305,10 @@ class _DashboardPageState extends State<_DashboardPage> {
                 Expanded(
                   child: _StatTile(
                     icon: Icons.description_outlined,
-                    label: 'Всего листов',
-                    value: '$_totalWaybills',
+                    label: 'Выпущено ЭПЛ',
+                    value: '$_usedQuota / $_quotaLimit',
                     color: AppTheme.primary,
+                    valueSize: 18,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -278,21 +376,16 @@ class _DashboardPageState extends State<_DashboardPage> {
                 },
               )
             else
-              _NewWaybillCard(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => WaybillScreen(
-                        driverData: widget.driverData,
-                        driverDocId: widget.driverDocId,
-                      ),
-                    ),
-                  );
-                  await _refreshActive();
-                  await _loadStats();
-                },
+              _NewWaybillCard(onTap: _onCreateWaybill),
+
+            if (_quotaExhausted) ...[
+              const SizedBox(height: 12),
+              _QuotaBanner(
+                limit: _quotaLimit,
+                pending: _requestPending,
+                onRequest: _requestMoreQuota,
               ),
+            ],
 
             const SizedBox(height: 22),
 
@@ -306,21 +399,6 @@ class _DashboardPageState extends State<_DashboardPage> {
             ),
             Row(
               children: [
-                Expanded(
-                  child: _QuickAction(
-                    icon: Icons.history,
-                    label: 'История',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => WaybillHistoryScreen(driverDocId: widget.driverDocId),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: _QuickAction(
                     icon: Icons.person_outline,
@@ -355,29 +433,6 @@ class _DashboardPageState extends State<_DashboardPage> {
                 ),
               ],
             ),
-
-            const SizedBox(height: 22),
-
-            // ───── Последние листы (мини-история)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Недавние листы',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.textMuted, letterSpacing: 0.4),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => WaybillHistoryScreen(driverDocId: widget.driverDocId),
-                    ),
-                  ),
-                  child: const Text('Все →'),
-                ),
-              ],
-            ),
-            _RecentWaybills(driverDocId: widget.driverDocId),
           ],
         ),
       ),
@@ -623,89 +678,56 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
-class _RecentWaybills extends StatelessWidget {
-  final String driverDocId;
-  const _RecentWaybills({required this.driverDocId});
+class _QuotaBanner extends StatelessWidget {
+  final int limit;
+  final bool pending;
+  final VoidCallback onRequest;
+
+  const _QuotaBanner({
+    required this.limit,
+    required this.pending,
+    required this.onRequest,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox();
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('waybills')
-          .where('authUid', isEqualTo: user.uid)
-          .orderBy('createdAt', descending: true)
-          .limit(3)
-          .snapshots(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
-          );
-        }
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return const AppCard(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Здесь появятся ваши путевые листы',
-                    style: TextStyle(color: AppTheme.textMuted)),
-              ),
-            ),
-          );
-        }
-        return Column(
-          children: docs.map((d) {
-            final data = d.data();
-            final closed = data['status'] == 'closed';
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: AppCard(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: (closed ? AppTheme.success : AppTheme.primary).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        closed ? Icons.check_circle_outline : Icons.bolt,
-                        color: closed ? AppTheme.success : AppTheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('АП №${data['waybillNumber'] ?? ''}',
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 2),
-                          Text(
-                            (data['date'] ?? '').toString(),
-                            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    StatusChip(
-                      label: closed ? 'Закрыт' : 'Открыт',
-                      color: closed ? AppTheme.success : AppTheme.primary,
-                    ),
-                  ],
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_clock, color: AppTheme.accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Лимит $limit ЭПЛ исчерпан',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-            );
-          }).toList(),
-        );
-      },
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            pending
+                ? 'Заявка на дополнительные листы отправлена. Дождитесь подтверждения администратора.'
+                : 'Чтобы продолжить выпускать ЭПЛ, запросите у администратора дополнительные 60 листов.',
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+          ),
+          if (!pending) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onRequest,
+                icon: const Icon(Icons.send_outlined, size: 18),
+                label: const Text('Запросить +60 ЭПЛ'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -720,7 +742,6 @@ class _BottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       (Icons.home_outlined, Icons.home, 'Главная'),
-      (Icons.history_outlined, Icons.history, 'История'),
       (Icons.person_outline, Icons.person, 'Профиль'),
       (Icons.settings_outlined, Icons.settings, 'Настройки'),
     ];

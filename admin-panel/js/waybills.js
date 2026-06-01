@@ -88,11 +88,18 @@ const Waybills = {
         return `${first}.${last}~~`;
     },
 
+    // Базовый адрес публичной страницы просмотра ЭПЛ (Cloudflare Pages).
+    viewerBaseUrl: 'https://taxopark-admin.pages.dev',
+
     generateWaybillHTML(w) {
-        const qrData = btoa(unescape(encodeURIComponent(
-            `n:${w.waybillNumber}|d:${w.date}|org:${w.orgName||''}|drv:${w.driverName||''}|p:${w.plateNumber||''}`
-        )));
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}`;
+        // QR ведёт на публичную страницу просмотра конкретного ЭПЛ (по id документа).
+        // Если id почему-то нет — кодируем краткую сводку (обратная совместимость).
+        const qrPayload = w.id
+            ? `${Waybills.viewerBaseUrl}/waybill.html?id=${encodeURIComponent(w.id)}`
+            : btoa(unescape(encodeURIComponent(
+                `n:${w.waybillNumber}|d:${w.date}|org:${w.orgName||''}|drv:${w.driverName||''}|p:${w.plateNumber||''}`
+            )));
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrPayload)}`;
         const sig = w.signatureData ? `<img src="${w.signatureData}" style="height:40px;max-width:200px;" alt="Подпись">` : `<span class="signature">${Waybills.signatureScribble(w.driverName)}</span>`;
 
         return `

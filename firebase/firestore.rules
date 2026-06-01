@@ -35,8 +35,10 @@ service cloud.firestore {
     //   - обновление: админ или владелец (например, закрытие смены)
     //   - удаление: только админ
     match /waybills/{waybillId} {
-      allow get: if isAdmin() ||
-                    (isAuthenticated() && resource.data.authUid == request.auth.uid);
+      // get разрешён всем: QR-код на печатном ЭПЛ ведёт на публичную страницу
+      // просмотра по id документа (id случайный, перебор невозможен; те же данные
+      // уже напечатаны на самом листе).
+      allow get: if true;
       allow list: if isAdmin() ||
                     (isAuthenticated() && request.query.limit <= 100);
       allow create: if isAuthenticated() &&
@@ -78,6 +80,27 @@ service cloud.firestore {
     match /driverDeletions/{requestId} {
       allow create: if isAdmin();
       allow read, list: if isAdmin();
+    }
+
+    // Счётчик выпущенных ЭПЛ для контроля лимита (60 на квоту).
+    // Doc ID = Firebase Auth UID водителя. Водитель ведёт свой счётчик,
+    // админ может читать для статистики.
+    match /driverCounters/{uid} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Заявки на дополнительные ЭПЛ (+60). Создаёт водитель для себя,
+    // читает свои заявки; админ видит все и подтверждает/отклоняет (update).
+    match /quotaRequests/{requestId} {
+      allow create: if isAuthenticated() &&
+                       request.resource.data.authUid == request.auth.uid &&
+                       request.resource.data.status == 'pending';
+      allow get: if isAdmin() ||
+                    (isAuthenticated() && resource.data.authUid == request.auth.uid);
+      allow list: if isAdmin() ||
+                    (isAuthenticated() && request.query.limit <= 100);
+      allow update: if isAdmin();
     }
 
     // По умолчанию всё закрыто

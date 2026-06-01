@@ -5,14 +5,129 @@
 const Drivers = {
     drivers: [],
     _secondaryApp: null,
+    _editingId: null,
+
+    // Соответствие «id поля формы» → «ключ в Firestore». Используется и для заполнения,
+    // и для сохранения при редактировании.
+    _fieldMap: {
+        'driver-fullname': 'fullName',
+        'driver-phone': 'phone',
+        'driver-snils': 'snils',
+        'driver-inn': 'inn',
+        'driver-org-name': 'orgName',
+        'driver-org-ogrn': 'orgOgrn',
+        'driver-org-inn': 'orgInn',
+        'driver-org-phone': 'orgPhone',
+        'driver-org-address': 'orgAddress',
+        'driver-car': 'carModel',
+        'driver-plate': 'plateNumber',
+        'driver-garage': 'garageNumber',
+        'driver-tab': 'tabNumber',
+        'driver-license': 'license',
+        'driver-class': 'licenseClass',
+        'driver-license-issued': 'licenseIssued',
+        'driver-license-expires': 'licenseExpires',
+        'driver-id-number': 'driverIdNumber',
+        'driver-osgop': 'osgop',
+        'driver-transport-type': 'transportType',
+        'driver-comm-type': 'commType',
+        'driver-okud': 'okud',
+        'driver-okpo': 'okpo',
+        'driver-permit': 'permit',
+        'driver-mintrans': 'mintrans',
+    },
 
     init() {
         document.getElementById('add-driver-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            Drivers.addDriver();
+            if (Drivers._editingId) {
+                Drivers.updateDriver(Drivers._editingId);
+            } else {
+                Drivers.addDriver();
+            }
         });
         // Автозаполнение организации из настроек по умолчанию
         Drivers._prefillOrgFromSettings();
+    },
+
+    // Переводит форму в режим создания нового водителя.
+    _resetFormToCreate() {
+        Drivers._editingId = null;
+        const form = document.getElementById('add-driver-form');
+        if (form) form.reset();
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        setVal('driver-okud', '0345001');
+        setVal('driver-mintrans', '390 ОТ 28.09.2022');
+        setText('add-driver-title', 'Регистрация водителя');
+        setText('add-driver-subtitle', 'Заполните данные нового водителя. Поля «Организация» подставляются из настроек.');
+        setText('add-driver-submit-text', 'Зарегистрировать водителя');
+        const pg = document.getElementById('driver-password-group');
+        if (pg) pg.style.display = '';
+        const ph = document.getElementById('driver-phone');
+        if (ph) ph.readOnly = false;
+    },
+
+    // Открыть форму для создания нового водителя.
+    newDriver() {
+        Drivers._resetFormToCreate();
+        Drivers._prefillOrgFromSettings();
+        showSection('add-driver');
+    },
+
+    // Открыть форму в режиме редактирования данных водителя.
+    editDriver(driverId) {
+        const driver = Drivers.drivers.find(d => d.id === driverId);
+        if (!driver) { showToast('Водитель не найден', 'error'); return; }
+        Drivers._editingId = driverId;
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        setText('add-driver-title', 'Редактирование водителя');
+        setText('add-driver-subtitle', 'Измените данные водителя. Телефон (логин) и пароль меняются отдельно.');
+        setText('add-driver-submit-text', 'Сохранить изменения');
+        const pg = document.getElementById('driver-password-group');
+        if (pg) pg.style.display = 'none';
+        for (const [elId, key] of Object.entries(Drivers._fieldMap)) {
+            const el = document.getElementById(elId);
+            if (el) el.value = driver[key] != null ? driver[key] : '';
+        }
+        // Телефон привязан к логину (Firebase Auth) — в этой форме не редактируем.
+        const ph = document.getElementById('driver-phone');
+        if (ph) ph.readOnly = true;
+        showSection('add-driver');
+    },
+
+    // Сохранить изменённые данные водителя (без изменения телефона/пароля).
+    async updateDriver(driverId) {
+        const btn = document.querySelector('#add-driver-form button[type="submit"]');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Сохранение...';
+        try {
+            const update = {};
+            for (const [elId, key] of Object.entries(Drivers._fieldMap)) {
+                if (key === 'phone') continue; // телефон не меняем
+                const el = document.getElementById(elId);
+                if (!el) continue;
+                let v = el.value;
+                if (typeof v === 'string') v = v.trim();
+                update[key] = v;
+            }
+            update.okud = update.okud || '0345001';
+            update.mintrans = update.mintrans || '390 ОТ 28.09.2022';
+            update.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+            update.updatedBy = Auth.currentUser.uid;
+            await db.collection('drivers').doc(driverId).update(update);
+            showToast('Данные водителя обновлены', 'success');
+            Drivers._resetFormToCreate();
+            Drivers.loadDrivers();
+            showSection('drivers');
+        } catch (e) {
+            console.error('Update driver error:', e);
+            showToast('Ошибка сохранения: ' + (e.message || e.code), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
     },
 
     // Подставляет данные организации в форму "Новый водитель" из settings/company,
@@ -114,6 +229,9 @@ const Drivers = {
                 <td data-label="Организация">${e(driver.orgName) || '—'}</td>
                 <td data-label="Статус">${status}</td>
                 <td data-label="Действия">
+                    <button class="btn btn-sm btn-outline" onclick="Drivers.editDriver('${id}')" title="Редактировать">
+                        <i class="fas fa-pen"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline" onclick="Drivers.resetPassword('${id}')" title="Сбросить пароль">
                         <i class="fas fa-key"></i>
                     </button>

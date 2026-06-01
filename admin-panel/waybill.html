@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Путевой лист — Asem Pro</title>
+    <style>
+        :root {
+            --orange: #FF8C00;
+            --ink: #1A1A1A;
+            --muted: #555;
+            --line: #e2e2e2;
+            --bg: #f4f5f7;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            line-height: 1.45;
+        }
+        .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+        .header {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 20px;
+        }
+        .logo {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: var(--orange); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; font-weight: 800;
+        }
+        .header h1 { font-size: 20px; margin: 0; }
+        .header p { margin: 0; color: var(--muted); font-size: 13px; }
+        .card {
+            background: #fff; border: 1px solid var(--line);
+            border-radius: 16px; padding: 20px; margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.05);
+        }
+        .title-row {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
+        }
+        .title-row .num { font-size: 22px; font-weight: 800; }
+        .badge {
+            display: inline-block; padding: 4px 12px; border-radius: 999px;
+            font-size: 13px; font-weight: 700;
+        }
+        .badge.active { background: #FF8C0022; color: #b25e00; }
+        .badge.closed { background: #22c55e22; color: #15803d; }
+        .date { color: var(--muted); font-size: 14px; margin-bottom: 4px; }
+        .section-label {
+            font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--muted); font-weight: 700; margin: 4px 0 10px;
+        }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+        @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+        .field label {
+            display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px;
+        }
+        .field .val { font-size: 15px; font-weight: 600; word-break: break-word; }
+        .state { text-align: center; padding: 64px 16px; color: var(--muted); }
+        .spinner {
+            width: 36px; height: 36px; border: 3px solid var(--line);
+            border-top-color: var(--orange); border-radius: 50%;
+            margin: 0 auto 16px; animation: spin .8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="header">
+            <div class="logo">A</div>
+            <div>
+                <h1>Asem Pro</h1>
+                <p>Электронный путевой лист</p>
+            </div>
+        </div>
+        <div id="content">
+            <div class="state">
+                <div class="spinner"></div>
+                Загрузка путевого листа…
+            </div>
+        </div>
+        <div class="footer">Asem Pro · Управление таксопарком</div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="js/config.js"></script>
+    <script>
+        function esc(v) {
+            const s = v == null ? '' : String(v);
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function field(label, value) {
+            const v = (value == null || value === '') ? '—' : esc(value);
+            return `<div class="field"><label>${esc(label)}</label><div class="val">${v}</div></div>`;
+        }
+
+        function renderState(message) {
+            document.getElementById('content').innerHTML =
+                `<div class="card"><div class="state">${esc(message)}</div></div>`;
+        }
+
+        function render(d) {
+            const closed = d.status === 'closed';
+            const badge = closed
+                ? '<span class="badge closed">Закрыт</span>'
+                : '<span class="badge active">Открыт</span>';
+            const dateText = d.dateFormatted || d.date || '';
+
+            const html = `
+                <div class="card">
+                    <div class="title-row">
+                        <div class="num">Путевой лист № ${esc(d.waybillNumber || '')}</div>
+                        ${badge}
+                    </div>
+                    <div class="date">${esc(dateText)}</div>
+                </div>
+
+                <div class="card">
+                    <div class="section-label">Водитель</div>
+                    <div class="grid">
+                        ${field('ФИО', d.driverName)}
+                        ${field('Телефон', d.driverPhone)}
+                        ${field('Вод. удостоверение', d.license)}
+                        ${field('Категория', d.licenseClass)}
+                        ${field('Таб. номер', d.tabNumber)}
+                        ${field('СНИЛС', d.snils)}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-label">Транспортное средство</div>
+                    <div class="grid">
+                        ${field('Марка', d.carModel)}
+                        ${field('Гос. номер', d.plateNumber)}
+                        ${field('Гаражный номер', d.garageNumber)}
+                        ${field('Тип ТС', d.transportType)}
+                        ${field('Показания одометра', d.odometerStart)}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-label">Время смены</div>
+                    <div class="grid">
+                        ${field('Предрейсовый медосмотр', d.medTime)}
+                        ${field('Контроль ТС', d.techTime)}
+                        ${field('Начало смены', d.shiftStart)}
+                        ${field('Выезд', d.departureTime)}
+                        ${field('Окончание смены', d.shiftEnd)}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-label">Организация</div>
+                    <div class="grid">
+                        ${field('Наименование', d.orgName)}
+                        ${field('ОГРН', d.ogrn)}
+                        ${field('ИНН', d.orgInn)}
+                        ${field('Телефон', d.orgPhone)}
+                        ${field('Адрес', d.orgAddress)}
+                    </div>
+                </div>`;
+            document.getElementById('content').innerHTML = html;
+        }
+
+        (async function () {
+            const id = new URLSearchParams(location.search).get('id');
+            if (!id) { renderState('Не указан идентификатор путевого листа.'); return; }
+            try {
+                const doc = await db.collection('waybills').doc(id).get();
+                if (!doc.exists) { renderState('Путевой лист не найден.'); return; }
+                render(doc.data() || {});
+            } catch (e) {
+                console.error('Load waybill error:', e);
+                renderState('Ошибка загрузки путевого листа.');
+            }
+        })();
+    </script>
+</body>
+</html>

@@ -384,7 +384,16 @@ class _WaybillScreenState extends State<WaybillScreen> {
         waybillData['signatureData'] = 'data:image/png;base64,${base64Encode(_signatureImage!)}';
       }
 
-      await FirebaseFirestore.instance.collection('waybills').add(waybillData);
+      final docRef =
+          await FirebaseFirestore.instance.collection('waybills').add(waybillData);
+      // ID документа нужен для QR-кода (ссылка на публичный просмотр ЭПЛ).
+      waybillData['docId'] = docRef.id;
+
+      // Увеличиваем счётчик выпущенных ЭПЛ для контроля лимита (60 на квоту).
+      await FirebaseFirestore.instance
+          .collection('driverCounters')
+          .doc(user.uid)
+          .set({'count': FieldValue.increment(1)}, SetOptions(merge: true));
 
       if (_signatureImage != null) {
         waybillData['_signatureBytes'] = _signatureImage;

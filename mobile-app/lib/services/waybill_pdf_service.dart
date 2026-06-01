@@ -15,8 +15,9 @@ class WaybillPdfService {
   static const PdfColor _green = PdfColor.fromInt(0xFFD9EAD3);
   static const PdfColor _blueBorder = PdfColor.fromInt(0xFF4A90D9);
   static const PdfColor _blueLight = PdfColor.fromInt(0xFFE8F0FE);
-  static const PdfColor _grey = PdfColor.fromInt(0xFF666666);
-  static const PdfColor _greyLight = PdfColor.fromInt(0xFF999999);
+  // Подписи полей делаем почти чёрными, чтобы хорошо читались на печати/скане.
+  static const PdfColor _grey = PdfColor.fromInt(0xFF1A1A1A);
+  static const PdfColor _greyLight = PdfColor.fromInt(0xFF555555);
   static const PdfColor _signBlue = PdfColor.fromInt(0xFF1A4E8E);
 
   static Future<void> _loadFonts() async {
@@ -888,8 +889,16 @@ class WaybillPdfService {
     return '$firstInitial.$secondInitial.~';
   }
 
-  /// Полезные данные для QR-кода
+  /// Базовый адрес публичной страницы просмотра ЭПЛ (Cloudflare Pages).
+  static const String viewerBaseUrl = 'https://taxopark-admin.pages.dev';
+
+  /// Данные для QR-кода. Если известен ID документа — ведём на публичную
+  /// страницу просмотра конкретного ЭПЛ; иначе кодируем краткую сводку.
   static String _qrPayload(Map<String, dynamic> d) {
+    final docId = _v(d, 'docId');
+    if (docId.isNotEmpty) {
+      return '$viewerBaseUrl/waybill.html?id=$docId';
+    }
     final s = StringBuffer();
     s.write('AsemPro|');
     s.write('n:${_v(d, 'waybillNumber')}|');
