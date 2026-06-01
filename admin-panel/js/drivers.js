@@ -35,6 +35,8 @@ const Drivers = {
         'driver-okpo': 'okpo',
         'driver-permit': 'permit',
         'driver-mintrans': 'mintrans',
+        'driver-med-name': 'medName',
+        'driver-tech-name': 'techName',
     },
 
     init() {
@@ -273,6 +275,8 @@ const Drivers = {
         const okpo = document.getElementById('driver-okpo').value.trim();
         const permit = document.getElementById('driver-permit').value.trim();
         const mintrans = document.getElementById('driver-mintrans').value.trim();
+        const medName = document.getElementById('driver-med-name').value.trim();
+        const techName = document.getElementById('driver-tech-name').value.trim();
 
         const phone = Drivers._normalizePhone(phoneRaw);
         const password = passwordRaw || Drivers._defaultPassword(phone);
@@ -326,9 +330,11 @@ const Drivers = {
                 orgInn,
                 orgPhone,
                 orgAddress,
-                okud: okud || '0345001',
+                okud: okud || '0345003',
                 okpo,
                 permit,
+                medName,
+                techName,
                 mintrans: mintrans || '390 ОТ 28.09.2022',
                 active: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -337,7 +343,7 @@ const Drivers = {
 
             showToast(`Водитель зарегистрирован. Пароль: ${password}`, 'success');
             document.getElementById('add-driver-form').reset();
-            document.getElementById('driver-okud').value = '0345001';
+            document.getElementById('driver-okud').value = '0345003';
             document.getElementById('driver-mintrans').value = '390 ОТ 28.09.2022';
             Drivers.loadDrivers();
             showSection('drivers');

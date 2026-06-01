@@ -547,7 +547,7 @@ class WaybillPdfService {
                 pw.SizedBox(height: 1.5),
                 pw.Text('$label:',
                     style: const pw.TextStyle(fontSize: 5.5, color: _grey)),
-                pw.Text(name.isEmpty ? '—' : name,
+                pw.Text(name,
                     style: pw.TextStyle(
                         fontSize: 6.8, fontWeight: pw.FontWeight.bold)),
                 if (issued.isNotEmpty || expires.isNotEmpty) ...[
