@@ -133,7 +133,15 @@ class _SplashScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(Icons.local_taxi, color: Colors.white, size: 44),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  'assets/logo/asem_logo.png',
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
             const SizedBox(height: 28),
             ShaderMask(
