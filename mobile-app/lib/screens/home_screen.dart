@@ -4,10 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../theme/app_theme.dart';
 import 'waybill_screen.dart';
-import 'waybill_preview_screen.dart';
+import 'waybill_qr_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
-import '../services/waybill_pdf_service.dart';
 
 /// Главный экран после входа: «дом» (новый ЭПЛ + активный лист),
 /// личный кабинет (карточка водителя), история, настройки.
@@ -344,25 +343,12 @@ class _DashboardPageState extends State<_DashboardPage> {
             else if (_activeWaybill != null)
               _ActiveWaybillCard(
                 data: _activeWaybill!,
-                onOpen: () async {
-                  try {
-                    final bytes = await WaybillPdfService.generateBytes(_activeWaybill!);
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => WaybillPreviewScreen(
-                          pdfBytes: bytes,
-                          waybillNumber: _activeWaybill!['waybillNumber']?.toString() ?? '',
-                        ),
-                      ),
-                    );
-                  } catch (e) {
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Ошибка: $e'), backgroundColor: AppTheme.danger),
-                    );
-                  }
+                onOpen: () {
+                  showWaybillQrSheet(
+                    context,
+                    data: _activeWaybill!,
+                    docId: _activeWaybillId ?? '',
+                  );
                 },
                 onClose: () async {
                   final ok = await showDialog<bool>(
@@ -556,8 +542,8 @@ class _ActiveWaybillCard extends StatelessWidget {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: onOpen,
-                  icon: const Icon(Icons.picture_as_pdf, size: 18),
-                  label: const Text('Открыть PDF'),
+                  icon: const Icon(Icons.qr_code_2, size: 18),
+                  label: const Text('Открыть ЭПЛ'),
                 ),
               ),
               const SizedBox(width: 10),
