@@ -7,7 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../theme/app_theme.dart';
 
-class WaybillPreviewScreen extends StatelessWidget {
+class WaybillPreviewScreen extends StatefulWidget {
   final Uint8List pdfBytes;
   final String waybillNumber;
 
@@ -17,7 +17,33 @@ class WaybillPreviewScreen extends StatelessWidget {
     required this.waybillNumber,
   });
 
+  @override
+  State<WaybillPreviewScreen> createState() => _WaybillPreviewScreenState();
+}
+
+class _WaybillPreviewScreenState extends State<WaybillPreviewScreen> {
+  late final Future<List<Uint8List>> _pagesFuture;
+
+  Uint8List get pdfBytes => widget.pdfBytes;
+  String get waybillNumber => widget.waybillNumber;
+
   String get _fileName => 'waybill_$waybillNumber.pdf';
+
+  @override
+  void initState() {
+    super.initState();
+    _pagesFuture = _renderPages();
+  }
+
+  /// Рендерим страницы PDF в изображения, чтобы можно было свободно
+  /// масштабировать (pinch-to-zoom) через InteractiveViewer.
+  Future<List<Uint8List>> _renderPages() async {
+    final pages = <Uint8List>[];
+    await for (final page in Printing.raster(pdfBytes, dpi: 200)) {
+      pages.add(await page.toPng());
+    }
+    return pages;
+  }
 
   Future<void> _saveToDownloads(BuildContext context) async {
     try {
@@ -78,18 +104,55 @@ class WaybillPreviewScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          // PDF preview
+          // PDF preview с возможностью масштабирования (pinch-to-zoom)
           Expanded(
-            child: PdfPreview(
-              build: (format) => pdfBytes,
-              canChangePageFormat: false,
-              canChangeOrientation: false,
-              canDebug: false,
-              allowPrinting: false,
-              allowSharing: false,
-              pdfFileName: _fileName,
-              previewPageMargin: const EdgeInsets.all(8),
-              loadingWidget: const Center(child: CircularProgressIndicator()),
+            child: FutureBuilder<List<Uint8List>>(
+              future: _pagesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError ||
+                    !snapshot.hasData ||
+                    snapshot.data!.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Не удалось отобразить документ',
+                        style: TextStyle(color: AppTheme.textMuted),
+                      ),
+                    ),
+                  );
+                }
+                final pages = snapshot.data!;
+                return InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 6,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      children: [
+                        for (final page in pages)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Image.memory(page, fit: BoxFit.fitWidth),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
 

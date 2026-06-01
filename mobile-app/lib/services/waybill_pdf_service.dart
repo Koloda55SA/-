@@ -675,21 +675,23 @@ class WaybillPdfService {
     pw.Widget signatureWidget;
     if (signatureBytes != null) {
       signatureWidget = pw.Container(
+        alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: pw.Image(
           pw.MemoryImage(signatureBytes),
-          height: 28,
+          height: 48,
           fit: pw.BoxFit.contain,
         ),
       );
     } else {
       // Fallback — стилизованная имитация подписи
       signatureWidget = pw.Container(
+        alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         child: pw.Text(
           _signature(_v(d, 'driverName')),
           style: pw.TextStyle(
-            fontSize: 16,
+            fontSize: 26,
             fontWeight: pw.FontWeight.bold,
             color: _signBlue,
           ),
@@ -701,9 +703,9 @@ class WaybillPdfService {
       border: pw.TableBorder.all(width: 0.6),
       columnWidths: const {
         0: pw.FlexColumnWidth(1.4),
-        1: pw.FlexColumnWidth(4),
+        1: pw.FlexColumnWidth(3.6),
         2: pw.FlexColumnWidth(1.4),
-        3: pw.FlexColumnWidth(2),
+        3: pw.FlexColumnWidth(3),
       },
       children: [
         pw.TableRow(children: [

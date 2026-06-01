@@ -2,95 +2,115 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <meta name="robots" content="noindex">
-    <title>Путевой лист — Asem Pro</title>
+    <title>Путевой лист (ЭПЛ) — Asem Pro</title>
     <style>
-        :root {
-            --orange: #FF8C00;
-            --ink: #1A1A1A;
-            --muted: #555;
-            --line: #e2e2e2;
-            --bg: #f4f5f7;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { background: #5a5a5a; -webkit-text-size-adjust: 100%; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; padding: 12px; }
+
+        .topbar {
+            max-width: 800px; margin: 0 auto 12px; display: flex;
+            align-items: center; justify-content: space-between; gap: 8px;
+            color: #fff; font-size: 14px;
         }
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--ink);
-            line-height: 1.45;
-        }
-        .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
-        .header {
-            display: flex; align-items: center; gap: 12px;
-            margin-bottom: 20px;
-        }
-        .logo {
-            width: 44px; height: 44px; border-radius: 12px;
-            background: var(--orange); color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px; font-weight: 800;
-        }
-        .header h1 { font-size: 20px; margin: 0; }
-        .header p { margin: 0; color: var(--muted); font-size: 13px; }
-        .card {
-            background: #fff; border: 1px solid var(--line);
-            border-radius: 16px; padding: 20px; margin-bottom: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,.05);
-        }
-        .title-row {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
-        }
-        .title-row .num { font-size: 22px; font-weight: 800; }
-        .badge {
+        .topbar .badge {
             display: inline-block; padding: 4px 12px; border-radius: 999px;
             font-size: 13px; font-weight: 700;
         }
-        .badge.active { background: #FF8C0022; color: #b25e00; }
-        .badge.closed { background: #22c55e22; color: #15803d; }
-        .date { color: var(--muted); font-size: 14px; margin-bottom: 4px; }
-        .section-label {
-            font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
-            color: var(--muted); font-weight: 700; margin: 4px 0 10px;
+        .badge.active { background: #ffb020; color: #3a2a00; }
+        .badge.closed { background: #22c55e; color: #04310f; }
+        .btn-print {
+            background: #fff; color: #222; border: 0; border-radius: 8px;
+            padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
         }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
-        @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
-        .field label {
-            display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px;
+
+        /* Лист документа — фикс. ширина как у печатного A4, можно зумить пальцами */
+        .sheet {
+            width: 800px; max-width: 100%;
+            background: #fff; margin: 0 auto; padding: 18px 20px 22px;
+            box-shadow: 0 6px 24px rgba(0,0,0,.35); font-size: 11px; line-height: 1.3;
         }
-        .field .val { font-size: 15px; font-weight: 600; word-break: break-word; }
-        .state { text-align: center; padding: 64px 16px; color: var(--muted); }
-        .spinner {
-            width: 36px; height: 36px; border: 3px solid var(--line);
-            border-top-color: var(--orange); border-radius: 50%;
-            margin: 0 auto 16px; animation: spin .8s linear infinite;
+        .epl-title { text-align: center; font-size: 19px; font-weight: bold; color: #444; margin-bottom: 4px; }
+        .header-row { display: flex; gap: 12px; margin-bottom: 6px; align-items: flex-start; }
+        .title-block { flex: 4; }
+        .title-block .pl-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+        .title-block .pl-line .label { font-size: 10px; }
+        .title-block .pl-line .number { font-size: 13px; font-weight: bold; }
+        .title-block .subtitle { font-size: 9px; color: #444; margin-left: 28px; }
+        .title-block .date-line { font-size: 10px; margin-top: 4px; }
+        .mintrans-ref { flex: 3; text-align: right; font-size: 8px; padding-top: 4px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        td { border: 1px solid #000; padding: 3px 5px; font-size: 10px; vertical-align: top; }
+        .nob td, td.nob { border: 0; }
+        .lbl { font-size: 8px; color: #333; }
+        .val { font-size: 10px; font-weight: bold; }
+        .codes-header { background: #f3f3f3; text-align: center; font-weight: bold; font-size: 9px; padding: 2px; border-bottom: 1px solid #000; }
+        .codes-row { display: flex; justify-content: space-between; padding: 2px 5px; border-bottom: 1px solid #ccc; font-size: 8px; }
+        .codes-row:last-child { border-bottom: 0; }
+        .codes-row .v { font-weight: bold; }
+
+        .green-bg { background: #d9ead3; }
+        .exam td { vertical-align: middle; }
+        .exam .desc { font-size: 8px; font-weight: bold; white-space: pre-line; }
+        .exam .ctr { text-align: center; font-weight: bold; font-size: 9.5px; }
+
+        /* Голубой блок электронной подписи */
+        .esign {
+            background: #eaf2fb; border: 1px solid #2f6fb3; border-radius: 2px;
+            padding: 4px 5px; display: flex; gap: 5px; align-items: flex-start;
         }
+        .esign .seal {
+            width: 16px; height: 16px; border-radius: 50%; background: #2f6fb3;
+            color: #fff; font-size: 9px; font-weight: bold; flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .esign .head { color: #2f6fb3; font-weight: bold; font-size: 7.5px; line-height: 1.15; }
+        .esign .role { font-size: 6.5px; color: #333; margin-top: 2px; }
+        .esign .name { font-size: 8px; font-weight: bold; }
+        .esign .valid { font-size: 6.5px; color: #444; margin-top: 1px; }
+
+        .release { border: 2px solid #000; padding: 8px 6px; text-align: center; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .release .small { font-size: 11px; font-weight: bold; }
+        .release .big { font-size: 17px; font-weight: bold; margin-top: 4px; }
+
+        .memo { font-size: 8px; margin: 7px 0; }
+        .memo b { font-size: 8px; }
+
+        /* Подпись водителя — крупная, без «коробки» */
+        .sign-cell { text-align: center; vertical-align: middle; }
+        .sign-img { height: 56px; max-width: 100%; object-fit: contain; }
+        .sign-text { font-family: 'Brush Script MT','Segoe Script',cursive; font-size: 26px; color: #14387a; font-style: italic; }
+
+        .work-split { text-align: center; font-weight: bold; font-size: 10px; margin: 6px 0 3px; }
+        .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px; }
+        .footer .qr { width: 104px; height: 104px; }
+        .footer .right { text-align: right; }
+        .footer .org { font-size: 11px; font-weight: bold; }
+        .footer .ord { font-size: 9px; }
+
+        .state { background:#fff; max-width:720px; margin: 40px auto; border-radius: 12px; padding: 48px 16px; text-align:center; color:#444; }
+        .spinner { width: 34px; height: 34px; border: 3px solid #ddd; border-top-color: #ff8c00;
+            border-radius: 50%; margin: 0 auto 14px; animation: spin .8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+
+        @media print {
+            html, body { background: #fff; padding: 0; }
+            .topbar { display: none; }
+            .sheet { box-shadow: none; width: 100%; padding: 6mm; }
+            @page { size: A4; margin: 8mm; }
+        }
     </style>
 </head>
 <body>
-    <div class="wrap">
-        <div class="header">
-            <div class="logo">A</div>
-            <div>
-                <h1>Asem Pro</h1>
-                <p>Электронный путевой лист</p>
-            </div>
-        </div>
-        <div id="content">
-            <div class="state">
-                <div class="spinner"></div>
-                Загрузка путевого листа…
-            </div>
-        </div>
-        <div class="footer">Asem Pro · Управление таксопарком</div>
+    <div id="root">
+        <div class="state"><div class="spinner"></div>Загрузка путевого листа…</div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/config.js"></script>
     <script>
@@ -99,78 +119,193 @@
             return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
-
-        function field(label, value) {
-            const v = (value == null || value === '') ? '—' : esc(value);
-            return `<div class="field"><label>${esc(label)}</label><div class="val">${v}</div></div>`;
+        function fmtShort(s) {
+            if (!s) return '';
+            const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return m ? `${m[3]}.${m[2]}.${m[1]}` : esc(s);
+        }
+        function scribble(name) {
+            if (!name) return '~';
+            const p = String(name).trim().split(/\s+/);
+            const a = p[0] ? p[0][0] : '';
+            const b = p.length > 1 ? p[p.length - 1][0] : '';
+            return `${a}.${b}~`;
         }
 
-        function renderState(message) {
-            document.getElementById('content').innerHTML =
-                `<div class="card"><div class="state">${esc(message)}</div></div>`;
+        function eSignBox(role, name, issued, expires) {
+            const valid = (issued || expires)
+                ? `<div class="valid">Действителен: ${fmtShort(issued)} — ${fmtShort(expires)}</div>` : '';
+            return `
+            <div class="esign">
+                <div class="seal">&#8381;</div>
+                <div>
+                    <div class="head">Документ подписан<br>электронной подписью</div>
+                    <div class="role">${esc(role)}:</div>
+                    <div class="name">${esc(name) || '—'}</div>
+                    ${valid}
+                </div>
+            </div>`;
         }
 
-        function render(d) {
+        function examRow(title, sub, date, time, role, name, issued, expires) {
+            return `
+            <table style="margin-top:3px"><tr class="exam">
+                <td class="green-bg" style="width:42%"><div class="desc">${esc(title)}</div>${sub ? `<div style="font-size:7px;color:#333;margin-top:3px">${esc(sub)}</div>` : ''}</td>
+                <td class="ctr" style="width:12%">${esc(date)}</td>
+                <td class="ctr" style="width:12%">${esc(time)}</td>
+                <td style="width:34%;padding:3px">${eSignBox(role, name, issued, expires)}</td>
+            </tr></table>`;
+        }
+        function postTripRow(title) {
+            return `
+            <table style="margin-top:2px"><tr class="exam">
+                <td class="green-bg" style="width:42%"><div class="desc">${esc(title)}</div></td>
+                <td style="width:12%;height:30px"></td>
+                <td style="width:12%"></td>
+                <td style="width:34%"></td>
+            </tr></table>`;
+        }
+
+        function buildSheet(d, id) {
+            const dateText = d.dateFormatted || (d.date ? `«${esc(d.date)}»` : '');
+            const sig = d.signatureData
+                ? `<img class="sign-img" src="${esc(d.signatureData)}" alt="Подпись">`
+                : `<span class="sign-text">${esc(scribble(d.driverName))}</span>`;
+            const qrData = `${location.origin}/waybill.html?id=${encodeURIComponent(id)}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(qrData)}`;
+
+            return `
+            <div class="epl-title">ЭПЛ</div>
+            <div class="header-row">
+                <div class="title-block">
+                    <div class="pl-line">
+                        <span class="label">путевой лист</span>
+                        <span class="number">АП</span><span class="label">№</span>
+                        <span class="number">${esc(d.waybillNumber || '')}</span>
+                        <span class="subtitle" style="margin-left:30px">серия</span>
+                    </div>
+                    <div class="subtitle" style="margin-left:0">легкового такси</div>
+                    <div class="date-line">${dateText}</div>
+                </div>
+                <div class="mintrans-ref">
+                    ФОРМА ПУТЕВОГО ЛИСТА РАЗРАБОТАНА В СООТВЕТСТВИИ<br>
+                    С ПРИКАЗОМ МИНТРАНСА РОССИИ № ${esc(d.mintransOrder || '390 ОТ 28.09.2022')} г.
+                </div>
+            </div>
+
+            <table>
+                <tr>
+                    <td style="width:57%">
+                        <div class="lbl">Организация</div>
+                        <div class="val">${esc(d.orgName || '')}</div>
+                        <div style="font-size:9px">${esc(d.orgAddress || '')}</div>
+                        <div style="font-size:9px">ОГРН(ИП): ${esc(d.ogrn || d.orgOgrn || '')}&nbsp;&nbsp;ИНН: ${esc(d.orgInn || '')}&nbsp;&nbsp;Тел.: ${esc(d.orgPhone || '')}</div>
+                    </td>
+                    <td style="padding:0">
+                        <div class="codes-header">Коды</div>
+                        <div class="codes-row"><span>Форма по ОКУД</span><span class="v">${esc(d.okud || '0345001')}</span></div>
+                        <div class="codes-row"><span>Форма по ОКПО</span><span class="v">${esc(d.okpo || '')}</span></div>
+                        <div class="codes-row"><span>Телефон (вод.)</span><span class="v">${esc(d.driverPhone || '')}</span></div>
+                        <div class="codes-row"><span>СНИЛС (вод.)</span><span class="v">${esc(d.snils || '')}</span></div>
+                        <div class="codes-row"><span>ИНН (вод.)</span><span class="v">${esc(d.driverInn || '')}</span></div>
+                        <div class="codes-row"><span>Гаражный номер</span><span class="v">${esc(d.garageNumber || '')}</span></div>
+                        <div class="codes-row"><span>Табельный номер</span><span class="v">${esc(d.tabNumber || '')}</span></div>
+                    </td>
+                </tr>
+            </table>
+
+            <table style="margin-top:3px">
+                <tr>
+                    <td style="width:50%"><div class="lbl">Марка автомобиля</div><div class="val">${esc(d.carModel || '')}</div></td>
+                    <td><div class="lbl">Перевозка</div><div class="val">${esc(d.transportType || '')}</div></td>
+                </tr>
+                <tr>
+                    <td><div class="lbl">Государственный номерной знак</div><div class="val">${esc(d.plateNumber || '')}</div></td>
+                    <td><div class="lbl">Вид сообщения</div><div class="val">${esc(d.commType || '')}</div></td>
+                </tr>
+                <tr>
+                    <td><div class="lbl">Водитель</div><div class="val">${esc(d.driverName || '')}</div></td>
+                    <td><div class="lbl">Дата выдачи / окончание</div><div class="val">${fmtShort(d.licenseIssued)} / ${fmtShort(d.licenseExpires)}</div></td>
+                </tr>
+                <tr>
+                    <td><div class="lbl">Удостоверение №</div><div class="val">${esc(d.license || '')} &nbsp; Класс: ${esc(d.licenseClass || '')}</div></td>
+                    <td><div class="lbl">ID ВОДИТЕЛЯ</div><div class="val">${esc(d.driverIdNumber || '')}</div></td>
+                </tr>
+                <tr>
+                    <td><div class="lbl">ОСГОП</div><div class="val">${esc(d.osgop || '')}</div></td>
+                    <td><div class="lbl">Разрешение №</div><div class="val">${esc(d.permitNumber || d.permit || '')}</div></td>
+                </tr>
+            </table>
+
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName, d.medIssued, d.medExpires)}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName, d.techIssued, d.techExpires)}
+
+            <table style="margin-top:3px" class="nob"><tr>
+                <td class="nob" style="width:70%;padding:0;padding-right:8px">
+                    <table>
+                        <tr><td style="width:50%"><b>Начало смены</b></td><td style="width:25%">${esc(d.date || '')}</td><td style="width:25%"><b>${esc(d.shiftStart || '')}</b></td></tr>
+                        <tr><td><b>Выезд с парковки</b></td><td>${esc(d.date || '')}</td><td><b>${esc(d.departureTime || '')}</b></td></tr>
+                        <tr><td><b>Показание одометра км</b></td><td colspan="2" style="font-size:13px"><b>${esc(d.odometerStart || '')}</b></td></tr>
+                    </table>
+                </td>
+                <td class="nob" style="width:30%"><div class="release"><div class="small">ВЫПУСК НА ЛИНИЮ</div><div class="big">РАЗРЕШЕН</div></div></td>
+            </tr></table>
+
+            <div class="memo"><b>ПАМЯТКА ВОДИТЕЛЮ</b> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы. При неисправностях (поломках, неработающих фонарях, повреждении колёс/шин, отсутствии документов) установить табличку «В ПАРК», прекратить заказы, вернуться в автопарк и сообщить мастеру.</div>
+
+            <table>
+                <tr>
+                    <td style="width:14%"><b>ВОДИТЕЛЬ:</b></td>
+                    <td style="width:48%"><b>${esc(d.driverName || '')}</b></td>
+                    <td style="width:14%"><b>ПОДПИСЬ:</b></td>
+                    <td style="width:24%" class="sign-cell">${sig}</td>
+                </tr>
+            </table>
+
+            <div class="work-split">РАЗДЕЛЕНИЕ РАБОЧЕГО ДНЯ (СМЕНЫ)</div>
+            <table>
+                <tr>
+                    <td class="green-bg" style="text-align:center"><b>ПЕРЕРЫВ НАЧАТ</b></td>
+                    <td class="green-bg" style="text-align:center"><b>ПЕРЕРЫВ ОКОНЧЕН</b></td>
+                    <td class="green-bg" style="text-align:center"><b>ОБЕД НАЧАТ</b></td>
+                    <td class="green-bg" style="text-align:center"><b>ОБЕД ОКОНЧЕН</b></td>
+                </tr>
+                <tr><td style="height:20px"></td><td></td><td></td><td></td></tr>
+            </table>
+
+            ${postTripRow('ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР')}
+            ${postTripRow('ПРОШЕЛ ПОСЛЕРЕЙСОВЫЙ\nТЕХНИЧЕСКИЙ ОСМОТР')}
+
+            <table style="margin-top:3px">
+                <tr><td style="width:50%"><b>Возвращение на парковку</b></td><td style="width:25%"></td><td style="width:25%"></td></tr>
+                <tr><td><b>Окончание смены</b></td><td>${esc(d.date || '')}</td><td><b>${esc(d.shiftEnd || '')}</b></td></tr>
+                <tr><td><b>Показание одометра км</b></td><td colspan="2"></td></tr>
+            </table>
+
+            <div class="footer">
+                <img class="qr" src="${qrUrl}" alt="QR">
+                <div class="right">
+                    <div class="org">${esc(d.orgName || '')}</div>
+                    <div class="ord">${esc(d.mintransOrder || '390 ОТ 28.09.2022')}</div>
+                </div>
+            </div>`;
+        }
+
+        function render(d, id) {
             const closed = d.status === 'closed';
             const badge = closed
                 ? '<span class="badge closed">Закрыт</span>'
-                : '<span class="badge active">Открыт</span>';
-            const dateText = d.dateFormatted || d.date || '';
-
-            const html = `
-                <div class="card">
-                    <div class="title-row">
-                        <div class="num">Путевой лист № ${esc(d.waybillNumber || '')}</div>
-                        ${badge}
-                    </div>
-                    <div class="date">${esc(dateText)}</div>
+                : '<span class="badge active">Действует</span>';
+            document.getElementById('root').innerHTML = `
+                <div class="topbar">
+                    <div>Электронный путевой лист&nbsp;&nbsp;${badge}</div>
+                    <button class="btn-print" onclick="window.print()">🖨 Печать / PDF</button>
                 </div>
+                <div class="sheet">${buildSheet(d, id)}</div>`;
+        }
 
-                <div class="card">
-                    <div class="section-label">Водитель</div>
-                    <div class="grid">
-                        ${field('ФИО', d.driverName)}
-                        ${field('Телефон', d.driverPhone)}
-                        ${field('Вод. удостоверение', d.license)}
-                        ${field('Категория', d.licenseClass)}
-                        ${field('Таб. номер', d.tabNumber)}
-                        ${field('СНИЛС', d.snils)}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="section-label">Транспортное средство</div>
-                    <div class="grid">
-                        ${field('Марка', d.carModel)}
-                        ${field('Гос. номер', d.plateNumber)}
-                        ${field('Гаражный номер', d.garageNumber)}
-                        ${field('Тип ТС', d.transportType)}
-                        ${field('Показания одометра', d.odometerStart)}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="section-label">Время смены</div>
-                    <div class="grid">
-                        ${field('Предрейсовый медосмотр', d.medTime)}
-                        ${field('Контроль ТС', d.techTime)}
-                        ${field('Начало смены', d.shiftStart)}
-                        ${field('Выезд', d.departureTime)}
-                        ${field('Окончание смены', d.shiftEnd)}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="section-label">Организация</div>
-                    <div class="grid">
-                        ${field('Наименование', d.orgName)}
-                        ${field('ОГРН', d.ogrn)}
-                        ${field('ИНН', d.orgInn)}
-                        ${field('Телефон', d.orgPhone)}
-                        ${field('Адрес', d.orgAddress)}
-                    </div>
-                </div>`;
-            document.getElementById('content').innerHTML = html;
+        function renderState(message) {
+            document.getElementById('root').innerHTML = `<div class="state">${esc(message)}</div>`;
         }
 
         (async function () {
@@ -179,7 +314,7 @@
             try {
                 const doc = await db.collection('waybills').doc(id).get();
                 if (!doc.exists) { renderState('Путевой лист не найден.'); return; }
-                render(doc.data() || {});
+                render(doc.data() || {}, id);
             } catch (e) {
                 console.error('Load waybill error:', e);
                 renderState('Ошибка загрузки путевого листа.');
