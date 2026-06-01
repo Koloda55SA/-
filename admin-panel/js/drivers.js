@@ -57,7 +57,7 @@ const Drivers = {
         if (form) form.reset();
         const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-        setVal('driver-okud', '0345001');
+        setVal('driver-okud', '0345003');
         setVal('driver-mintrans', '390 ОТ 28.09.2022');
         setText('add-driver-title', 'Регистрация водителя');
         setText('add-driver-subtitle', 'Заполните данные нового водителя. Поля «Организация» подставляются из настроек.');
@@ -112,7 +112,7 @@ const Drivers = {
                 if (typeof v === 'string') v = v.trim();
                 update[key] = v;
             }
-            update.okud = update.okud || '0345001';
+            update.okud = update.okud || '0345003';
             update.mintrans = update.mintrans || '390 ОТ 28.09.2022';
             update.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             update.updatedBy = Auth.currentUser.uid;

@@ -206,13 +206,13 @@
                     </td>
                     <td style="padding:0">
                         <div class="codes-header">Коды</div>
-                        <div class="codes-row"><span>Форма по ОКУД</span><span class="v">${esc(d.okud || '0345001')}</span></div>
-                        <div class="codes-row"><span>Форма по ОКПО</span><span class="v">${esc(d.okpo || '')}</span></div>
+                        <div class="codes-row"><span>Форма по ОКУД</span><span class="v">0345003</span></div>
+                        <div class="codes-row"><span>Форма по ОКПО</span><span class="v">36271045</span></div>
                         <div class="codes-row"><span>Телефон (вод.)</span><span class="v">${esc(d.driverPhone || '')}</span></div>
                         <div class="codes-row"><span>СНИЛС (вод.)</span><span class="v">${esc(d.snils || '')}</span></div>
                         <div class="codes-row"><span>ИНН (вод.)</span><span class="v">${esc(d.driverInn || '')}</span></div>
-                        <div class="codes-row"><span>Гаражный номер</span><span class="v">${esc(d.garageNumber || '')}</span></div>
-                        <div class="codes-row"><span>Табельный номер</span><span class="v">${esc(d.tabNumber || '')}</span></div>
+                        <div class="codes-row"><span>Гаражный номер</span><span class="v">${esc(d.garageNumber || d.plateNumber || '')}</span></div>
+                        <div class="codes-row"><span>Табельный номер</span><span class="v">${esc(d.tabNumber || d.plateNumber || '')}</span></div>
                     </td>
                 </tr>
             </table>
