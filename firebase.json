@@ -3,6 +3,10 @@
     "rules": "firebase/firestore.rules",
     "indexes": "firebase/firestore.indexes.json"
   },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
   "hosting": {
     "public": "admin-panel",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]

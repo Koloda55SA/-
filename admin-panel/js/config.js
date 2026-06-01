@@ -13,3 +13,5 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// Cloud Functions (смена пароля / удаление аккаунта водителя через Admin SDK)
+const functions = (typeof firebase.functions === 'function') ? firebase.functions() : null;

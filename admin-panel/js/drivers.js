@@ -378,12 +378,28 @@ const Drivers = {
             showToast('Пароль должен быть не короче 6 символов', 'error');
             return;
         }
+        // 1) Основной путь: серверная Cloud Function реально меняет пароль в Firebase Auth.
+        //    driverId = Auth UID водителя (документ создаётся с этим id).
+        if (functions) {
+            try {
+                const call = functions.httpsCallable('setDriverPassword');
+                await call({ driverUid: driver.id, newPassword: password });
+                showToast(`Пароль изменён. Сообщите водителю: ${password}`, 'success');
+                return;
+            } catch (e) {
+                console.error('setDriverPassword failed:', e);
+                // Функция не задеплоена / недоступна — переходим к запасному варианту.
+                if (e.code && e.code !== 'functions/not-found' &&
+                    e.code !== 'functions/internal' && e.code !== 'functions/unavailable') {
+                    showToast('Ошибка смены пароля: ' + (e.message || e.code), 'error');
+                    return;
+                }
+            }
+        }
+
+        // 2) Запасной путь (если Cloud Functions ещё не задеплоены):
+        //    создаём заявку без открытого пароля; пароль показываем один раз в UI.
         try {
-            // ВАЖНО: пароль НЕ сохраняем в Firestore.
-            // Создаём только заявку с метаданными — Cloud Function (Admin SDK)
-            // принимает её, генерирует пароль и обновляет Firebase Auth напрямую.
-            // Если функции ещё нет, админ применяет новый пароль вручную в Firebase Console
-            // (ниже мы покажем подсказку с одноразовым паролем только в браузере).
             await db.collection('passwordResets').add({
                 driverId: driver.id,
                 authEmail: driver.authEmail || Drivers._phoneToEmail(phone),
@@ -392,10 +408,13 @@ const Drivers = {
                 requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 status: 'pending'
             });
-            // Пароль показываем только в UI один раз — нигде не сохраняем.
-            showToast(`Заявка создана. Сообщите водителю пароль: ${password}`, 'success');
+            showToast(
+                `Сервер смены пароля не подключён. Новый пароль (${password}) задайте вручную ` +
+                `в Firebase Console → Authentication, либо задеплойте Cloud Functions.`,
+                'error'
+            );
         } catch (e) {
-            console.error('Reset password error:', e);
+            console.error('Reset password fallback error:', e);
             showToast('Ошибка: ' + e.message, 'error');
         }
     },
