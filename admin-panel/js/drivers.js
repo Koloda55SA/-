@@ -378,26 +378,30 @@ const Drivers = {
             showToast('Пароль должен быть не короче 6 символов', 'error');
             return;
         }
-        // 1) Основной путь: серверная Cloud Function реально меняет пароль в Firebase Auth.
+        // 1) Основной путь: бесплатный Cloudflare Worker реально меняет пароль в Firebase Auth.
         //    driverId = Auth UID водителя (документ создаётся с этим id).
-        if (functions) {
+        if (typeof AUTH_WORKER_URL === 'string' && AUTH_WORKER_URL) {
             try {
-                const call = functions.httpsCallable('setDriverPassword');
-                await call({ driverUid: driver.id, newPassword: password });
-                showToast(`Пароль изменён. Сообщите водителю: ${password}`, 'success');
-                return;
-            } catch (e) {
-                console.error('setDriverPassword failed:', e);
-                // Функция не задеплоена / недоступна — переходим к запасному варианту.
-                if (e.code && e.code !== 'functions/not-found' &&
-                    e.code !== 'functions/internal' && e.code !== 'functions/unavailable') {
-                    showToast('Ошибка смены пароля: ' + (e.message || e.code), 'error');
+                const idToken = await auth.currentUser.getIdToken();
+                const res = await fetch(AUTH_WORKER_URL.replace(/\/+$/, '') + '/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idToken, driverUid: driver.id, newPassword: password }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) {
+                    showToast(`Пароль изменён. Сообщите водителю: ${password}`, 'success');
                     return;
                 }
+                showToast('Ошибка смены пароля: ' + (data.error || res.status), 'error');
+                return;
+            } catch (e) {
+                console.error('worker reset-password failed:', e);
+                // Сеть/воркер недоступны — переходим к запасному варианту ниже.
             }
         }
 
-        // 2) Запасной путь (если Cloud Functions ещё не задеплоены):
+        // 2) Запасной путь (если сервер смены пароля ещё не подключён):
         //    создаём заявку без открытого пароля; пароль показываем один раз в UI.
         try {
             await db.collection('passwordResets').add({

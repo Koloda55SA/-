@@ -1,0 +1,9 @@
+name = "asem-pro-auth"
+main = "src/worker.js"
+compatibility_date = "2024-09-01"
+
+# Публичный web API key проекта (не секрет — он и так в клиенте).
+# Секрет SERVICE_ACCOUNT_JSON задаётся отдельно: wrangler secret put SERVICE_ACCOUNT_JSON
+[vars]
+FIREBASE_API_KEY = "AIzaSyDCZolgkxYj6fBvJ_OT1v6o5qVVmVKpuy8"
+ALLOWED_ORIGIN = "https://taxopark-admin.pages.dev"

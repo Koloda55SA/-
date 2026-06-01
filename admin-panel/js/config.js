@@ -13,5 +13,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-// Cloud Functions (смена пароля / удаление аккаунта водителя через Admin SDK)
+// Cloud Functions (необязательно — fallback)
 const functions = (typeof firebase.functions === 'function') ? firebase.functions() : null;
+// URL бесплатного Cloudflare Worker для серверных операций (смена пароля / удаление).
+// Заполняется после деплоя воркера: https://asem-pro-auth.<subdomain>.workers.dev
+const AUTH_WORKER_URL = "";
