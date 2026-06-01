@@ -129,7 +129,7 @@ const Waybills = {
         .codes-row { display: flex; justify-content: space-between; padding: 1px 4px; border-bottom: 1px solid #ccc; font-size: 7px; }
         .codes-row .v { font-weight: bold; }
         .green-bg { background: #d9ead3; }
-        .release { border: 2px solid #000; padding: 8px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .release { padding: 8px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
         .release .small { font-size: 10px; font-weight: bold; }
         .release .big { font-size: 16px; font-weight: bold; }
         .memo { font-size: 7px; margin: 6px 0; }

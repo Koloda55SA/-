@@ -74,14 +74,18 @@ class _SignatureScreenState extends State<SignatureScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: RepaintBoundary(
-                  key: _repaintKey,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
-                    ),
+                child: Container(
+                  // Рамка и белый фон — только для экрана. В захват подписи они
+                  // НЕ попадают: RepaintBoundary ниже оборачивает лишь область
+                  // рисования, поэтому PNG получается прозрачным — только штрихи,
+                  // без коробки/рамки (как в оригинальном бланке).
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
+                  ),
+                  child: RepaintBoundary(
+                    key: _repaintKey,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onPanStart: (details) {

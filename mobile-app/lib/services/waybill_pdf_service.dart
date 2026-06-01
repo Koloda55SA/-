@@ -610,9 +610,8 @@ class WaybillPdfService {
           ),
           // Разделитель
           pw.SizedBox(),
-          // Правая часть — "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН"
+          // Правая часть — "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН" (без рамки, только текст)
           pw.Container(
-            decoration: pw.BoxDecoration(border: pw.Border.all(width: 1.4)),
             padding: const pw.EdgeInsets.all(8),
             child: pw.Column(
               mainAxisAlignment: pw.MainAxisAlignment.center,
