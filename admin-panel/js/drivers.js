@@ -438,8 +438,28 @@ const Drivers = {
     async deleteDriver(driverId) {
         if (!confirm('Удалить водителя? Это действие нельзя отменить.')) return;
 
+        // Основной путь: Worker удаляет и Auth-аккаунт, и документ Firestore.
+        if (typeof AUTH_WORKER_URL === 'string' && AUTH_WORKER_URL) {
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const res = await fetch(AUTH_WORKER_URL.replace(/\/+$/, '') + '/delete-driver', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idToken, driverUid: driverId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) {
+                    Drivers.loadDrivers();
+                    showToast('Водитель удалён (вместе с аккаунтом входа)', 'success');
+                    return;
+                }
+            } catch (e) {
+                console.error('worker delete-driver failed:', e);
+            }
+        }
+
+        // Запасной путь: помечаем для удаления и убираем документ водителя.
         try {
-            // Помечаем для удаления Auth-аккаунта (Cloud Function подхватит)
             await db.collection('driverDeletions').add({
                 driverId,
                 authUid: driverId,

@@ -17,4 +17,4 @@ const db = firebase.firestore();
 const functions = (typeof firebase.functions === 'function') ? firebase.functions() : null;
 // URL бесплатного Cloudflare Worker для серверных операций (смена пароля / удаление).
 // Заполняется после деплоя воркера: https://asem-pro-auth.<subdomain>.workers.dev
-const AUTH_WORKER_URL = "";
+const AUTH_WORKER_URL = "https://asem-pro-auth.oon66517.workers.dev";
