@@ -52,10 +52,17 @@ const Drivers = {
         return `${digits}@asempro.driver`;
     },
 
-    // Дефолтный пароль = последние 6 цифр номера
-    _defaultPassword(phoneNormalized) {
-        const digits = phoneNormalized.replace(/\D/g, '');
-        return digits.length >= 6 ? digits.slice(-6) : digits;
+    // Случайный пароль по умолчанию (если админ не задал свой).
+    // Используем crypto для криптостойкой генерации; исключаем похожие символы.
+    _generatePassword(length = 10) {
+        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        const out = [];
+        const rnd = new Uint32Array(length);
+        (window.crypto || window.msCrypto).getRandomValues(rnd);
+        for (let i = 0; i < length; i++) {
+            out.push(alphabet[rnd[i] % alphabet.length]);
+        }
+        return out.join('');
     },
 
     // Получаем secondary Firebase app (чтобы createUser не разлогинил админа)
@@ -157,7 +164,7 @@ const Drivers = {
         const mintrans = document.getElementById('driver-mintrans').value.trim();
 
         const phone = Drivers._normalizePhone(phoneRaw);
-        const password = passwordRaw || Drivers._defaultPassword(phone);
+        const password = passwordRaw || Drivers._generatePassword();
 
         if (password.length < 6) {
             showToast('Пароль должен быть не короче 6 символов', 'error');
@@ -252,10 +259,10 @@ const Drivers = {
     async resetPassword(driverId) {
         const driver = Drivers.drivers.find(d => d.id === driverId);
         if (!driver) return;
-        const newPwd = prompt(`Новый пароль для ${driver.fullName} (минимум 6 символов).\nОставьте пустым для использования последних 6 цифр номера:`);
+        const newPwd = prompt(`Новый пароль для ${driver.fullName} (минимум 6 символов).\nОставьте пустым для генерации случайного пароля:`);
         if (newPwd === null) return; // Отмена
         const phone = Drivers._normalizePhone(driver.phone);
-        const password = newPwd.trim() || Drivers._defaultPassword(phone);
+        const password = newPwd.trim() || Drivers._generatePassword();
         if (password.length < 6) {
             showToast('Пароль должен быть не короче 6 символов', 'error');
             return;

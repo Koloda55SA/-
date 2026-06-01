@@ -90,7 +90,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       // Delete user's waybills
       final waybills = await FirebaseFirestore.instance
           .collection('waybills')
-          .where('driverId', isEqualTo: user.uid)
+          .where('authUid', isEqualTo: user.uid)
+          .limit(100)
           .get();
       for (final doc in waybills.docs) {
         await doc.reference.delete();

@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AsemPro — Управление таксопарком</title>
+    <link rel="icon" type="image/x-icon" href="img/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -13,7 +17,7 @@
     <div id="loading-page" class="page active">
         <div class="loading-container">
             <div class="loading-logo">
-                <i class="fas fa-taxi"></i>
+                <img src="img/logo.png" alt="AsemPro">
             </div>
             <div class="loading-spinner"></div>
             <p class="loading-text">AsemPro</p>
@@ -31,7 +35,7 @@
             <div class="login-card">
                 <div class="login-header">
                     <div class="logo-icon">
-                        <i class="fas fa-taxi"></i>
+                        <img src="img/logo.png" alt="AsemPro">
                     </div>
                     <h1>AsemPro</h1>
                     <p>Управление таксопарком</p>
@@ -63,7 +67,7 @@
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <i class="fas fa-taxi"></i>
+                    <img src="img/logo.png" alt="AsemPro">
                 </div>
                 <span class="sidebar-brand">AsemPro</span>
             </div>
@@ -267,7 +271,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Пароль (для входа в приложение)</label>
-                            <input type="text" id="driver-password" placeholder="Оставьте пустым — будут последние 6 цифр телефона" minlength="6">
+                            <input type="text" id="driver-password" placeholder="Оставьте пустым — сгенерируется случайный пароль" minlength="6">
                         </div>
                         <div class="form-group">
                             <label>СНИЛС</label>

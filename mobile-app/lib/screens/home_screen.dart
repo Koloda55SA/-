@@ -159,11 +159,8 @@ class _DashboardPageState extends State<_DashboardPage> {
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    gradient: AppTheme.primaryGradient,
                     boxShadow: [
                       BoxShadow(
                         color: AppTheme.primary.withValues(alpha: 0.3),
@@ -171,7 +168,15 @@ class _DashboardPageState extends State<_DashboardPage> {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.local_taxi, color: Colors.white, size: 22),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      'assets/logo/asem_logo.png',
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

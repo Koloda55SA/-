@@ -120,11 +120,8 @@ class _SplashScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 88,
-              height: 88,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
                     color: AppTheme.primary.withValues(alpha: 0.35),
@@ -133,7 +130,15 @@ class _SplashScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(Icons.local_taxi, color: Colors.white, size: 44),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  'assets/logo/asem_logo.png',
+                  width: 104,
+                  height: 104,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
             const SizedBox(height: 28),
             ShaderMask(
