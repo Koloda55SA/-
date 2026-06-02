@@ -56,6 +56,11 @@
                 <div id="login-error" class="error-message"></div>
                 <div class="login-footer">
                     <i class="fas fa-shield-halved"></i> Безопасный вход по номеру и паролю
+                    <div class="login-legal">
+                        <a href="privacy.html" target="_blank" rel="noopener">Политика конфиденциальности</a>
+                        <span>·</span>
+                        <a href="terms.html" target="_blank" rel="noopener">Пользовательское соглашение</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -233,6 +238,17 @@
                         <i class="fas fa-plus"></i> Добавить водителя
                     </button>
                 </div>
+                <div class="drivers-search">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="drivers-search-input" autocomplete="off"
+                           placeholder="Поиск: ФИО, телефон, авто, гос. номер, организация…"
+                           oninput="Drivers.filterDrivers(this.value)">
+                    <button type="button" id="drivers-search-clear" class="drivers-search-clear" title="Очистить"
+                            onclick="document.getElementById('drivers-search-input').value='';Drivers.filterDrivers('')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <span id="drivers-search-count" class="drivers-search-count"></span>
+                </div>
                 <div class="table-container">
                     <table id="drivers-table">
                         <thead>
@@ -387,8 +403,7 @@
                         <div class="form-group">
                             <label>Вид сообщения</label>
                             <select id="driver-comm-type">
-                                <option value="пригородное, городское">пригородное, городское</option>
-                                <option value="междугороднее">междугороднее</option>
+                                <option value="пригородное, городское, междугородное">пригородное, городское, междугородное</option>
                             </select>
                         </div>
                     </div>

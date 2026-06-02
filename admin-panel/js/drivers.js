@@ -196,21 +196,71 @@ const Drivers = {
         try {
             const snapshot = await db.collection('drivers').orderBy('fullName').get();
             Drivers.drivers = [];
-            const tbody = document.getElementById('drivers-tbody');
-            tbody.innerHTML = '';
-
             snapshot.forEach(doc => {
-                const driver = { id: doc.id, ...doc.data() };
-                Drivers.drivers.push(driver);
-                tbody.insertAdjacentHTML('beforeend', Drivers.renderRow(driver));
+                Drivers.drivers.push({ id: doc.id, ...doc.data() });
             });
-
-            if (Drivers.drivers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Нет зарегистрированных водителей</td></tr>';
-            }
+            Drivers.renderList();
         } catch (error) {
             console.error('Error loading drivers:', error);
         }
+    },
+
+    // Нормализация строки для поиска: нижний регистр, ё→е, схлопывание пробелов
+    _norm(value) {
+        return (value == null ? '' : String(value))
+            .toLowerCase()
+            .replace(/ё/g, 'е')
+            .replace(/\s+/g, ' ')
+            .trim();
+    },
+
+    // Умный поиск: каждое слово запроса должно найтись в любом из полей.
+    // Телефон/гос. номер сравниваются также без пробелов и спецсимволов.
+    _matches(driver, query) {
+        const q = Drivers._norm(query);
+        if (!q) return true;
+        const fields = [
+            driver.fullName, driver.phone, driver.carModel,
+            driver.plateNumber, driver.orgName, driver.driverIdNumber,
+        ];
+        const hay = Drivers._norm(fields.join(' '));
+        const haySquished = hay.replace(/[\s+()\-.]/g, '');
+        return q.split(' ').every(token => {
+            const t = token.replace(/[\s+()\-.]/g, '');
+            return hay.includes(token) || (t && haySquished.includes(t));
+        });
+    },
+
+    filterDrivers(query) {
+        Drivers._searchQuery = query || '';
+        Drivers.renderList();
+    },
+
+    renderList() {
+        const tbody = document.getElementById('drivers-tbody');
+        if (!tbody) return;
+        const query = Drivers._searchQuery || '';
+        const list = Drivers.drivers.filter(d => Drivers._matches(d, query));
+
+        tbody.innerHTML = '';
+        if (Drivers.drivers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Нет зарегистрированных водителей</td></tr>';
+        } else if (list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Ничего не найдено по запросу «${Drivers._esc(query)}»</td></tr>`;
+        } else {
+            list.forEach(driver => {
+                tbody.insertAdjacentHTML('beforeend', Drivers.renderRow(driver));
+            });
+        }
+
+        const countEl = document.getElementById('drivers-search-count');
+        if (countEl) {
+            countEl.textContent = query
+                ? `Найдено: ${list.length} из ${Drivers.drivers.length}`
+                : `Всего: ${Drivers.drivers.length}`;
+        }
+        const clearEl = document.getElementById('drivers-search-clear');
+        if (clearEl) clearEl.style.display = query ? 'flex' : 'none';
     },
 
     renderRow(driver) {

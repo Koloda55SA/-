@@ -281,7 +281,7 @@
 
             <table style="margin-top:3px">
                 <tr><td style="width:50%"><b>Возвращение на парковку</b></td><td style="width:25%"></td><td style="width:25%"></td></tr>
-                <tr><td><b>Окончание смены</b></td><td>${esc(d.date || '')}</td><td><b>${esc(d.shiftEnd || '')}</b></td></tr>
+                <tr><td><b>Окончание смены</b></td><td>${esc(d.shiftEndDate || d.date || '')}</td><td><b>${esc(d.shiftEnd || '')}</b></td></tr>
                 <tr><td><b>Показание одометра км</b></td><td colspan="2"></td></tr>
             </table>
 

@@ -375,6 +375,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
         'shiftStart': fmtHms(shiftStartDt),
         'departureTime': fmtHms(departureDt),
         'shiftEnd': fmtHms(shiftEndDt),
+        'shiftEndDate': DateFormat('dd.MM.yyyy').format(shiftEndDt),
         'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': Timestamp.fromDate(expiresAtDt.toUtc()),
