@@ -814,7 +814,7 @@ class WaybillPdfService {
         ]),
         pw.TableRow(children: [
           _cellLabel('Окончание смены'),
-          _cellValue(_v(d, 'date')),
+          _cellValue(_v(d, 'shiftEndDate', _v(d, 'date'))),
           _cellValue(_v(d, 'shiftEnd'), bold: true),
         ]),
         pw.TableRow(children: [

@@ -253,8 +253,8 @@
                 </tr>
             </table>
 
-            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName, d.medSerial, d.medIssued, d.medExpires)}
-            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName, d.techSerial, d.techIssued, d.techExpires)}
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName || 'Самышина Елена Александровна', d.medSerial || 'b8d46c0e277c1e06a40c8e3e253d9e6c', d.medIssued || '2025-11-15', d.medExpires || '2026-11-15')}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName || 'Темишов Бекмырза', d.techSerial || '519756c9191b011ca7d2e9508fc7877d', d.techIssued || '2025-11-20', d.techExpires || '2026-11-20')}
 
             <table style="margin-top:3px" class="nob"><tr>
                 <td class="nob" style="width:70%;padding:0;padding-right:8px">
@@ -294,7 +294,7 @@
 
             <table style="margin-top:3px">
                 <tr><td style="width:50%"><b>Возвращение на парковку</b></td><td style="width:25%"></td><td style="width:25%"></td></tr>
-                <tr><td><b>Окончание смены</b></td><td>${esc(d.date || '')}</td><td><b>${esc(d.shiftEnd || '')}</b></td></tr>
+                <tr><td><b>Окончание смены</b></td><td>${esc(d.shiftEndDate || d.date || '')}</td><td><b>${esc(d.shiftEnd || '')}</b></td></tr>
                 <tr><td><b>Показание одометра км</b></td><td colspan="2"></td></tr>
             </table>
 

@@ -224,7 +224,12 @@ const Waybills = {
 
     <div class="memo"><b>ПАМЯТКА ВОДИТЕЛЮ</b> На основании приказа Минтранса №424 от 16.10.2020г., длительность ежедневного отдыха НЕ МЕНЕЕ 11 часов. Перерыв для отдыха и питания не более 5-ти часов, но не позже 5-ти часов после начала работы.</div>
 
-    <table>
+    <table style="margin-top:2px;border-collapse:collapse" border="1">
+        <tr><td style="width:42%;background:#d9ead3;padding:3px"><b style="font-size:7px">ПРОШЕЛ ПРЕДРЕЙСОВЫЙ МЕДИЦИНСКИЙ ОСМОТР К ИСПОЛНЕНИЮ ТРУДОВЫХ ОБЯЗАННОСТЕЙ ДОПУЩЕН</b></td><td style="text-align:center;width:12%">${w.date||''}</td><td style="text-align:center;width:12%"><b>${w.medTime||''}</b></td><td style="width:34%;padding:3px;background:#eaf2fb;border:1px solid #2f6fb3"><span style="color:#2f6fb3;font-weight:bold;font-size:6px">ДОКУМЕНТ ПОДПИСАН УСИЛЕННОЙ КВАЛИФИЦИРОВАННОЙ ЭЛЕКТРОННОЙ ПОДПИСЬЮ</span><br><span style="font-size:6px;color:#333">Медицинский работник:</span> <b style="font-size:7px">${w.medName||'Самышина Елена Александровна'}</b><br><span style="font-size:5.5px;color:#444">Сертификат: B8 D4 6C 0E 27 7C 1E 06 A4 0C 8E 3E 25 3D 9E 6C</span><br><span style="font-size:5.5px;color:#444">Действителен: 15.11.2025 — 15.11.2026</span></td></tr>
+        <tr><td style="background:#d9ead3;padding:3px"><b style="font-size:7px">КОНТРОЛЬ ТЕХНИЧЕСКОГО СОСТОЯНИЯ ТРАНСПОРТНОГО СРЕДСТВА ПРОЙДЕН</b></td><td style="text-align:center">${w.date||''}</td><td style="text-align:center"><b>${w.techTime||''}</b></td><td style="padding:3px;background:#eaf2fb;border:1px solid #2f6fb3"><span style="color:#2f6fb3;font-weight:bold;font-size:6px">ДОКУМЕНТ ПОДПИСАН УСИЛЕННОЙ КВАЛИФИЦИРОВАННОЙ ЭЛЕКТРОННОЙ ПОДПИСЬЮ</span><br><span style="font-size:6px;color:#333">Контролёр тех.сост. ТС:</span> <b style="font-size:7px">${w.techName||'Темишов Бекмырза'}</b><br><span style="font-size:5.5px;color:#444">Сертификат: 51 97 56 C9 19 1B 01 1C A7 D2 E9 50 8F C7 87 7D</span><br><span style="font-size:5.5px;color:#444">Действителен: 20.11.2025 — 20.11.2026</span></td></tr>
+    </table>
+
+    <table style="margin-top:3px">
         <tr>
             <td style="width:15%"><b>ВОДИТЕЛЬ:</b></td>
             <td style="width:50%"><b>${w.driverName || ''}</b></td>
@@ -246,7 +251,7 @@ const Waybills = {
 
     <table style="margin-top:3px">
         <tr><td style="width:50%"><b>Возвращение на парковку</b></td><td style="width:25%"></td><td style="width:25%"></td></tr>
-        <tr><td><b>Окончание смены</b></td><td>${w.date || ''}</td><td><b>${w.shiftEnd || ''}</b></td></tr>
+        <tr><td><b>Окончание смены</b></td><td>${w.shiftEndDate || w.date || ''}</td><td><b>${w.shiftEnd || ''}</b></td></tr>
         <tr><td><b>Показание одометра км</b></td><td colspan="2"></td></tr>
     </table>
 
