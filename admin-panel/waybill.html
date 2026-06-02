@@ -69,7 +69,7 @@
             color: #fff; font-size: 9px; font-weight: bold; flex: 0 0 auto;
             display: flex; align-items: center; justify-content: center;
         }
-        .esign .head { color: #2f6fb3; font-weight: bold; font-size: 7.5px; line-height: 1.15; }
+        .esign .head { color: #2f6fb3; font-weight: bold; font-size: 7px; line-height: 1.2; text-transform: uppercase; }
         .esign .role { font-size: 6.5px; color: #333; margin-top: 2px; }
         .esign .name { font-size: 8px; font-weight: bold; }
         .esign .valid { font-size: 6.5px; color: #444; margin-top: 1px; }
@@ -135,28 +135,41 @@
             return `${a}.${b}~`;
         }
 
-        function eSignBox(role, name, issued, expires) {
+        function formatSerial(hex) {
+            if (!hex) return '';
+            const c = String(hex).replace(/\s/g, '');
+            let r = '';
+            for (let i = 0; i < c.length; i += 2) {
+                if (i > 0) r += ' ';
+                r += c.substring(i, i + 2).toUpperCase();
+            }
+            return r;
+        }
+
+        function eSignBox(role, name, serial, issued, expires) {
+            const serialLine = serial ? `<div class="valid">Сертификат: ${esc(formatSerial(serial))}</div>` : '';
             const valid = (issued || expires)
                 ? `<div class="valid">Действителен: ${fmtShort(issued)} — ${fmtShort(expires)}</div>` : '';
             return `
             <div class="esign">
-                <div class="seal">&#8381;</div>
+                <div class="seal">&#1057;&#1093;</div>
                 <div>
-                    <div class="head">Документ подписан<br>электронной подписью</div>
+                    <div class="head">ДОКУМЕНТ ПОДПИСАН<br>УСИЛЕННОЙ КВАЛИФИЦИРОВАННОЙ<br>ЭЛЕКТРОННОЙ ПОДПИСЬЮ</div>
                     <div class="role">${esc(role)}:</div>
                     <div class="name">${esc(name)}</div>
+                    ${serialLine}
                     ${valid}
                 </div>
             </div>`;
         }
 
-        function examRow(title, sub, date, time, role, name, issued, expires) {
+        function examRow(title, sub, date, time, role, name, serial, issued, expires) {
             return `
             <table style="margin-top:3px"><tr class="exam">
                 <td class="green-bg" style="width:42%"><div class="desc">${esc(title)}</div>${sub ? `<div style="font-size:7px;color:#333;margin-top:3px">${esc(sub)}</div>` : ''}</td>
                 <td class="ctr" style="width:12%">${esc(date)}</td>
                 <td class="ctr" style="width:12%">${esc(time)}</td>
-                <td style="width:34%;padding:3px">${eSignBox(role, name, issued, expires)}</td>
+                <td style="width:34%;padding:3px">${eSignBox(role, name, serial, issued, expires)}</td>
             </tr></table>`;
         }
         function postTripRow(title) {
@@ -240,8 +253,8 @@
                 </tr>
             </table>
 
-            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName, d.medIssued, d.medExpires)}
-            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName, d.techIssued, d.techExpires)}
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName, d.medSerial, d.medIssued, d.medExpires)}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName, d.techSerial, d.techIssued, d.techExpires)}
 
             <table style="margin-top:3px" class="nob"><tr>
                 <td class="nob" style="width:70%;padding:0;padding-right:8px">

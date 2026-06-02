@@ -37,6 +37,12 @@ const Drivers = {
         'driver-mintrans': 'mintrans',
         'driver-med-name': 'medName',
         'driver-tech-name': 'techName',
+        'driver-med-serial': 'medSerial',
+        'driver-med-issued': 'medIssued',
+        'driver-med-expires': 'medExpires',
+        'driver-tech-serial': 'techSerial',
+        'driver-tech-issued': 'techIssued',
+        'driver-tech-expires': 'techExpires',
     },
 
     init() {
@@ -277,6 +283,12 @@ const Drivers = {
         const mintrans = document.getElementById('driver-mintrans').value.trim();
         const medName = document.getElementById('driver-med-name').value.trim();
         const techName = document.getElementById('driver-tech-name').value.trim();
+        const medSerial = document.getElementById('driver-med-serial').value.trim();
+        const medIssued = document.getElementById('driver-med-issued').value;
+        const medExpires = document.getElementById('driver-med-expires').value;
+        const techSerial = document.getElementById('driver-tech-serial').value.trim();
+        const techIssued = document.getElementById('driver-tech-issued').value;
+        const techExpires = document.getElementById('driver-tech-expires').value;
 
         const phone = Drivers._normalizePhone(phoneRaw);
         const password = passwordRaw || Drivers._defaultPassword(phone);
@@ -335,6 +347,12 @@ const Drivers = {
                 permit,
                 medName,
                 techName,
+                medSerial,
+                medIssued,
+                medExpires,
+                techSerial,
+                techIssued,
+                techExpires,
                 mintrans: mintrans || '390 ОТ 28.09.2022',
                 active: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),

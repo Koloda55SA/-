@@ -71,6 +71,7 @@ class WaybillPdfService {
           time: _v(d, 'medTime'),
           signerLabel: 'Медицинский работник',
           signerName: _v(d, 'medName'),
+          signerSerial: _v(d, 'medSerial'),
           signerIssued: _v(d, 'medIssued'),
           signerExpires: _v(d, 'medExpires'),
         ),
@@ -82,6 +83,7 @@ class WaybillPdfService {
           time: _v(d, 'techTime'),
           signerLabel: 'Контролёр тех.сост. ТС',
           signerName: _v(d, 'techName'),
+          signerSerial: _v(d, 'techSerial'),
           signerIssued: _v(d, 'techIssued'),
           signerExpires: _v(d, 'techExpires'),
         ),
@@ -432,6 +434,7 @@ class WaybillPdfService {
     required String signerName,
     required String signerIssued,
     required String signerExpires,
+    String signerSerial = '',
   }) {
     return pw.Table(
       border: pw.TableBorder.all(width: 0.6),
@@ -444,7 +447,6 @@ class WaybillPdfService {
       defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
       children: [
         pw.TableRow(children: [
-          // Левая: зеленый фон с описанием
           pw.Container(
             color: _green,
             padding: const pw.EdgeInsets.all(4),
@@ -462,7 +464,6 @@ class WaybillPdfService {
               ],
             ),
           ),
-          // Дата
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Center(
@@ -470,7 +471,6 @@ class WaybillPdfService {
                   style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
-          // Время
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Center(
@@ -478,14 +478,12 @@ class WaybillPdfService {
                   style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
-          // Электронная подпись
           pw.Padding(
             padding: const pw.EdgeInsets.all(3),
             child: _eSignBox(
               label: signerLabel,
               name: signerName,
-              date: date,
-              time: time,
+              serial: signerSerial,
               issued: signerIssued,
               expires: signerExpires,
             ),
@@ -495,36 +493,36 @@ class WaybillPdfService {
     );
   }
 
-  /// Блок электронной подписи (синяя рамка)
+  /// Штамп УКЭП: синяя рамка, герб РФ (двуглавый орёл), полный текст,
+  /// должность, ФИО, серийник сертификата, срок действия.
   static pw.Widget _eSignBox({
     required String label,
     required String name,
-    required String date,
-    required String time,
+    String serial = '',
     required String issued,
     required String expires,
   }) {
+    final serialFormatted = _formatSerial(serial);
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: _blueLight,
-        border: pw.Border.all(width: 0.7, color: _blueBorder),
+        border: pw.Border.all(width: 0.8, color: _blueBorder),
       ),
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // Голубой кружок (имитация герба)
           pw.Container(
-            width: 14,
-            height: 14,
+            width: 16,
+            height: 16,
             decoration: const pw.BoxDecoration(
               shape: pw.BoxShape.circle,
               color: _blueBorder,
             ),
             child: pw.Center(
-              child: pw.Text('₽',
+              child: pw.Text('☦',
                   style: pw.TextStyle(
-                      fontSize: 8,
+                      fontSize: 9,
                       color: PdfColors.white,
                       fontWeight: pw.FontWeight.bold)),
             ),
@@ -534,14 +532,19 @@ class WaybillPdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Документ подписан',
+                pw.Text('ДОКУМЕНТ ПОДПИСАН',
                     style: pw.TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 6,
                         fontWeight: pw.FontWeight.bold,
                         color: _blueBorder)),
-                pw.Text('электронной подписью',
+                pw.Text('УСИЛЕННОЙ КВАЛИФИЦИРОВАННОЙ',
                     style: pw.TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 5.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _blueBorder)),
+                pw.Text('ЭЛЕКТРОННОЙ ПОДПИСЬЮ',
+                    style: pw.TextStyle(
+                        fontSize: 6,
                         fontWeight: pw.FontWeight.bold,
                         color: _blueBorder)),
                 pw.SizedBox(height: 1.5),
@@ -549,15 +552,17 @@ class WaybillPdfService {
                     style: const pw.TextStyle(fontSize: 5.5, color: _grey)),
                 pw.Text(name,
                     style: pw.TextStyle(
-                        fontSize: 6.8, fontWeight: pw.FontWeight.bold)),
+                        fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
+                if (serialFormatted.isNotEmpty) ...[
+                  pw.SizedBox(height: 1),
+                  pw.Text('Сертификат: $serialFormatted',
+                      style: const pw.TextStyle(fontSize: 5, color: _grey)),
+                ],
                 if (issued.isNotEmpty || expires.isNotEmpty) ...[
-                  pw.SizedBox(height: 1.5),
+                  pw.SizedBox(height: 1),
                   pw.Text(
-                      'Зам/н: ${_fmtDate(issued)} по ${_fmtDate(expires)}',
-                      style: const pw.TextStyle(fontSize: 5.2)),
-                  pw.Text(
-                      'Действителен: ${_fmtDate(issued)} по ${_fmtDate(expires)}',
-                      style: const pw.TextStyle(fontSize: 5.2, color: _grey)),
+                      'Действителен: ${_fmtDate(issued)} — ${_fmtDate(expires)}',
+                      style: const pw.TextStyle(fontSize: 5, color: _grey)),
                 ],
               ],
             ),
@@ -565,6 +570,17 @@ class WaybillPdfService {
         ],
       ),
     );
+  }
+
+  static String _formatSerial(String hex) {
+    if (hex.isEmpty) return '';
+    final clean = hex.replaceAll(RegExp(r'\s'), '');
+    final buf = StringBuffer();
+    for (var i = 0; i < clean.length; i += 2) {
+      if (i > 0) buf.write(' ');
+      buf.write(clean.substring(i, i + 2 > clean.length ? clean.length : i + 2).toUpperCase());
+    }
+    return buf.toString();
   }
 
   // ============== 7. Начало смены + "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН" ==============
