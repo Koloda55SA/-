@@ -59,20 +59,16 @@
         .exam .desc { font-size: 8px; font-weight: bold; white-space: pre-line; }
         .exam .ctr { text-align: center; font-weight: bold; font-size: 9.5px; }
 
-        /* Голубой блок электронной подписи */
+        /* Штамп электронной подписи (синяя рамка, герб РФ) */
         .esign {
-            background: #eaf2fb; border: 1px solid #2f6fb3; border-radius: 2px;
-            padding: 4px 5px; display: flex; gap: 5px; align-items: flex-start;
+            background: #fff; border: 1px solid #4a90d9; border-radius: 5px;
+            padding: 4px 6px; display: flex; gap: 5px; align-items: flex-start;
         }
-        .esign .seal {
-            width: 16px; height: 16px; border-radius: 50%; background: #2f6fb3;
-            color: #fff; font-size: 9px; font-weight: bold; flex: 0 0 auto;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .esign .head { color: #2f6fb3; font-weight: bold; font-size: 7px; line-height: 1.2; text-transform: uppercase; }
-        .esign .role { font-size: 6.5px; color: #333; margin-top: 2px; }
-        .esign .name { font-size: 8px; font-weight: bold; }
-        .esign .valid { font-size: 6.5px; color: #444; margin-top: 1px; }
+        .esign .eagle { width: 30px; height: 30px; flex: 0 0 auto; margin-top: 1px; }
+        .esign .head { color: #1a4e8e; font-weight: bold; font-style: italic; font-size: 7px; line-height: 1.2; }
+        .esign .role { font-size: 7px; color: #000; font-weight: bold; margin-top: 2px; }
+        .esign .name { font-size: 7.5px; font-weight: bold; color: #000; }
+        .esign .valid { font-size: 6.5px; color: #1a4e8e; margin-top: 1px; }
 
         .release { padding: 8px 6px; text-align: center; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -146,16 +142,18 @@
             return r;
         }
 
+        const EAGLE_SVG = `<svg class="eagle" viewBox="0 0 120 114" xmlns="http://www.w3.org/2000/svg"><g fill="#9db8db" stroke="#6f8fc4" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round"><path d="M60 50 C57 56 56 70 58 86 L60 92 L62 86 C64 70 63 56 60 50 Z"/><path d="M53 84 C55 92 57 98 60 102 C63 98 65 92 67 84 C64 88 56 88 53 84 Z"/><path d="M58 52 C50 50 42 48 35 44 C40 46 41 50 38 52 C30 49 22 47 15 49 C22 50 24 54 21 57 C14 56 9 58 5 62 C12 61 24 60 33 64 C30 60 31 56 36 57 C34 53 36 50 41 51 C40 47 43 45 48 47 C47 44 50 43 54 45 C53 49 55 51 58 52 Z"/><path d="M62 52 C70 50 78 48 85 44 C80 46 79 50 82 52 C90 49 98 47 105 49 C98 50 96 54 99 57 C106 56 111 58 115 62 C108 61 96 60 87 64 C90 60 89 56 84 57 C86 53 84 50 79 51 C80 47 77 45 72 47 C73 44 70 43 66 45 C67 49 65 51 62 52 Z"/><path d="M57 48 C53 44 49 42 45 43 C49 41 50 37 48 34 C46 31 42 30 39 32 C42 30 44 27 43 24 C47 26 52 32 55 39 C56 43 57 46 58 49 Z"/><path d="M40 33 C36 32 33 34 33 37 C35 36 38 37 40 38 Z"/><path d="M63 48 C67 44 71 42 75 43 C71 41 70 37 72 34 C74 31 78 30 81 32 C78 30 76 27 77 24 C73 26 68 32 65 39 C64 43 63 46 62 49 Z"/><path d="M80 33 C84 32 87 34 87 37 C85 36 82 37 80 38 Z"/><path d="M40 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/><path d="M68 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/><path d="M52 20 l3 -5 l3 3 l2 -5 l2 5 l3 -3 l3 5 Z"/><path d="M60 60 C57 61 55 63 55 67 C55 73 58 77 60 79 C62 77 65 73 65 67 C65 63 63 61 60 60 Z" fill="#86a4d0"/></g></svg>`;
+
         function eSignBox(role, name, serial, issued, expires) {
             const serialLine = serial ? `<div class="valid">Сертификат: ${esc(formatSerial(serial))}</div>` : '';
             const valid = (issued || expires)
-                ? `<div class="valid">Действителен: ${fmtShort(issued)} — ${fmtShort(expires)}</div>` : '';
+                ? `<div class="valid">Действителен: с ${fmtShort(issued)} по ${fmtShort(expires)}</div>` : '';
             return `
             <div class="esign">
-                <div class="seal">&#1057;&#1093;</div>
+                ${EAGLE_SVG}
                 <div>
-                    <div class="head">ДОКУМЕНТ ПОДПИСАН<br>УСИЛЕННОЙ КВАЛИФИЦИРОВАННОЙ<br>ЭЛЕКТРОННОЙ ПОДПИСЬЮ</div>
-                    <div class="role">${esc(role)}:</div>
+                    <div class="head">Документ подписан<br>электронной подписью</div>
+                    <div class="role">${esc(role)}</div>
                     <div class="name">${esc(name)}</div>
                     ${serialLine}
                     ${valid}
