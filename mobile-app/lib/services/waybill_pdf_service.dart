@@ -10,22 +10,53 @@ import 'package:pdf/widgets.dart' as pw;
 class WaybillPdfService {
   static pw.Font? _regular;
   static pw.Font? _bold;
+  static pw.MemoryImage? _eagle;
+
+  // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
+  static const Map<String, String> _medDefault = {
+    'name': 'Самышина Елена Александровна',
+    'serial': 'b8d46c0e277c1e06a40c8e3e253d9e6c',
+    'issued': '15.11.2025',
+    'expires': '15.11.2026',
+  };
+  static const Map<String, String> _techDefault = {
+    'name': 'Темишов Бекмырза',
+    'serial': '519756c9191b011ca7d2e9508fc7877d',
+    'issued': '20.11.2025',
+    'expires': '20.11.2026',
+  };
+
+  /// Серийный номер сертификата: верхний регистр, парами по 2 символа.
+  static String _fmtSerial(String serial) {
+    final hex = serial.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toUpperCase();
+    if (hex.isEmpty) return '';
+    final parts = <String>[];
+    for (var i = 0; i < hex.length; i += 2) {
+      parts.add(hex.substring(i, i + 2 > hex.length ? hex.length : i + 2));
+    }
+    return parts.join(' ');
+  }
 
   // Цвета шаблона
   static const PdfColor _green = PdfColor.fromInt(0xFFD9EAD3);
   static const PdfColor _blueBorder = PdfColor.fromInt(0xFF4A90D9);
-  static const PdfColor _blueLight = PdfColor.fromInt(0xFFE8F0FE);
   // Подписи полей делаем почти чёрными, чтобы хорошо читались на печати/скане.
   static const PdfColor _grey = PdfColor.fromInt(0xFF1A1A1A);
   static const PdfColor _greyLight = PdfColor.fromInt(0xFF555555);
   static const PdfColor _signBlue = PdfColor.fromInt(0xFF1A4E8E);
 
   static Future<void> _loadFonts() async {
-    if (_regular != null && _bold != null) return;
+    if (_regular != null && _bold != null && _eagle != null) return;
     final regularData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
     _regular = pw.Font.ttf(regularData);
     _bold = pw.Font.ttf(boldData);
+    try {
+      final eagleData = await rootBundle.load('assets/images/esign-eagle.png');
+      _eagle = pw.MemoryImage(eagleData.buffer.asUint8List());
+    } catch (_) {
+      _eagle = null;
+    }
   }
 
   static Future<Uint8List> generateBytes(Map<String, dynamic> data) async {
@@ -50,6 +81,13 @@ class WaybillPdfService {
     return v.toString();
   }
 
+  /// Значение поля или fallback, если оно отсутствует ИЛИ пустое.
+  static String _vne(Map<String, dynamic> d, String key, String fallback) {
+    final v = d[key];
+    if (v == null || v.toString().trim().isEmpty) return fallback;
+    return v.toString();
+  }
+
   static pw.Widget _build(Map<String, dynamic> d) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -70,9 +108,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'medTime'),
           signerLabel: 'Медицинский работник',
-          signerName: _v(d, 'medName'),
-          signerIssued: _v(d, 'medIssued'),
-          signerExpires: _v(d, 'medExpires'),
+          signerName: _vne(d, 'medName', _medDefault['name']!),
+          signerSerial: _vne(d, 'medCertSerial', _medDefault['serial']!),
+          signerIssued: _vne(d, 'medIssued', _medDefault['issued']!),
+          signerExpires: _vne(d, 'medExpires', _medDefault['expires']!),
         ),
         pw.SizedBox(height: 2),
         _examBlock(
@@ -81,9 +120,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'techTime'),
           signerLabel: 'Контролёр тех.сост. ТС',
-          signerName: _v(d, 'techName'),
-          signerIssued: _v(d, 'techIssued'),
-          signerExpires: _v(d, 'techExpires'),
+          signerName: _vne(d, 'techName', _techDefault['name']!),
+          signerSerial: _vne(d, 'techCertSerial', _techDefault['serial']!),
+          signerIssued: _vne(d, 'techIssued', _techDefault['issued']!),
+          signerExpires: _vne(d, 'techExpires', _techDefault['expires']!),
         ),
         pw.SizedBox(height: 3),
         _shiftStartAndRelease(d),
@@ -429,6 +469,7 @@ class WaybillPdfService {
     required String time,
     required String signerLabel,
     required String signerName,
+    required String signerSerial,
     required String signerIssued,
     required String signerExpires,
   }) {
@@ -483,8 +524,7 @@ class WaybillPdfService {
             child: _eSignBox(
               label: signerLabel,
               name: signerName,
-              date: date,
-              time: time,
+              serial: signerSerial,
               issued: signerIssued,
               expires: signerExpires,
             ),
@@ -494,70 +534,57 @@ class WaybillPdfService {
     );
   }
 
-  /// Блок электронной подписи (синяя рамка)
+  /// Штамп усиленной квалифицированной электронной подписи
+  /// (синяя рамка, герб, серийный номер сертификата — как на бумажном бланке).
   static pw.Widget _eSignBox({
     required String label,
     required String name,
-    required String date,
-    required String time,
+    required String serial,
     required String issued,
     required String expires,
   }) {
+    final serialText = _fmtSerial(serial);
     return pw.Container(
       decoration: pw.BoxDecoration(
-        color: _blueLight,
-        border: pw.Border.all(width: 0.7, color: _blueBorder),
+        color: PdfColors.white,
+        border: pw.Border.all(width: 0.9, color: _blueBorder),
+        borderRadius: pw.BorderRadius.circular(4),
       ),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      padding: const pw.EdgeInsets.fromLTRB(4, 4, 5, 4),
       child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          // Голубой кружок (имитация герба)
-          pw.Container(
-            width: 14,
-            height: 14,
-            decoration: const pw.BoxDecoration(
-              shape: pw.BoxShape.circle,
-              color: _blueBorder,
+          // Герб (двуглавый орёл, бледно-голубой)
+          if (_eagle != null)
+            pw.Container(
+              width: 22,
+              margin: const pw.EdgeInsets.only(right: 4),
+              child: pw.Image(_eagle!),
             ),
-            child: pw.Center(
-              child: pw.Text('₽',
-                  style: pw.TextStyle(
-                      fontSize: 8,
-                      color: PdfColors.white,
-                      fontWeight: pw.FontWeight.bold)),
-            ),
-          ),
-          pw.SizedBox(width: 4),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Документ подписан',
+                pw.Text('Документ подписан\nэлектронной подписью',
                     style: pw.TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 6.6,
                         fontWeight: pw.FontWeight.bold,
-                        color: _blueBorder)),
-                pw.Text('электронной подписью',
-                    style: pw.TextStyle(
-                        fontSize: 6.5,
-                        fontWeight: pw.FontWeight.bold,
+                        fontStyle: pw.FontStyle.italic,
                         color: _blueBorder)),
                 pw.SizedBox(height: 1.5),
-                pw.Text('$label:',
-                    style: const pw.TextStyle(fontSize: 5.5, color: _grey)),
+                pw.Text(label,
+                    style: pw.TextStyle(
+                        fontSize: 6, fontWeight: pw.FontWeight.bold, color: _grey)),
                 pw.Text(name.isEmpty ? '—' : name,
                     style: pw.TextStyle(
-                        fontSize: 6.8, fontWeight: pw.FontWeight.bold)),
-                if (issued.isNotEmpty || expires.isNotEmpty) ...[
-                  pw.SizedBox(height: 1.5),
+                        fontSize: 6.6, fontWeight: pw.FontWeight.bold)),
+                if (serialText.isNotEmpty)
+                  pw.Text('Сертификат: $serialText',
+                      style: const pw.TextStyle(fontSize: 4.2, color: _grey)),
+                if (issued.isNotEmpty || expires.isNotEmpty)
                   pw.Text(
-                      'Зам/н: ${_fmtDate(issued)} по ${_fmtDate(expires)}',
-                      style: const pw.TextStyle(fontSize: 5.2)),
-                  pw.Text(
-                      'Действителен: ${_fmtDate(issued)} по ${_fmtDate(expires)}',
-                      style: const pw.TextStyle(fontSize: 5.2, color: _grey)),
-                ],
+                      'Действителен: с ${_fmtDate(issued)} по ${_fmtDate(expires)}',
+                      style: const pw.TextStyle(fontSize: 4.8, color: _grey)),
               ],
             ),
           ),
@@ -678,7 +705,7 @@ class WaybillPdfService {
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: pw.Image(
           pw.MemoryImage(signatureBytes),
-          height: 48,
+          height: 72,
           fit: pw.BoxFit.contain,
         ),
       );
@@ -690,7 +717,7 @@ class WaybillPdfService {
         child: pw.Text(
           _signature(_v(d, 'driverName')),
           style: pw.TextStyle(
-            fontSize: 26,
+            fontSize: 40,
             fontWeight: pw.FontWeight.bold,
             color: _signBlue,
           ),
