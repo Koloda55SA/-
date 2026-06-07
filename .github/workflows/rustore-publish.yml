@@ -1,0 +1,73 @@
+name: Publish to RuStore
+
+# Ручной запуск. Публикует ПОДПИСАННЫЙ APK в RuStore через Public API.
+# Требуются секреты RUSTORE_KEY_ID и RUSTORE_PRIVATE_KEY (Base64 PKCS#8).
+# ВНИМАНИЕ: создание черновика через API работает только когда у приложения уже
+# есть активная версия. Самую первую версию публикуют вручную через консоль.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Тег релиза с APK (пусто = последний релиз)'
+        required: false
+        default: ''
+      whats_new:
+        description: 'Что нового в версии'
+        required: false
+        default: ''
+      publish_type:
+        description: 'Тип публикации'
+        required: false
+        default: 'INSTANTLY'
+        type: choice
+        options: [INSTANTLY, MANUAL, DELAYED]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — секреты RuStore заданы
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$RUSTORE_KEY_ID" ] || [ -z "$RUSTORE_PRIVATE_KEY" ]; then
+            echo "::error::Добавьте секреты RUSTORE_KEY_ID и RUSTORE_PRIVATE_KEY (Settings → Secrets → Actions)"
+            exit 1
+          fi
+
+      - name: Download signed APK from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+          fi
+          echo "Релиз: $TAG"
+          gh release download "$TAG" --pattern 'app-release.apk' --dir .
+          ls -la app-release.apk
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install --quiet requests cryptography
+
+      - name: Publish to RuStore
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          RUSTORE_APK_PATH: app-release.apk
+          RUSTORE_PACKAGE: com.taxopark.driver
+          RUSTORE_WHATS_NEW: ${{ github.event.inputs.whats_new }}
+          RUSTORE_PUBLISH_TYPE: ${{ github.event.inputs.publish_type }}
+        run: python rustore/publish.py
