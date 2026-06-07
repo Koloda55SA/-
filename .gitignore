@@ -52,3 +52,6 @@ _ai_local/
 *.keystore
 mobile-app/android/key.properties
 key.properties
+
+# Flutter generated
+mobile-app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
