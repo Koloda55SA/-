@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 class WaybillPdfService {
   static pw.Font? _regular;
   static pw.Font? _bold;
+  static pw.Font? _italic;
   static pw.MemoryImage? _eagle;
 
   // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
@@ -46,11 +47,15 @@ class WaybillPdfService {
   static const PdfColor _signBlue = PdfColor.fromInt(0xFF1A4E8E);
 
   static Future<void> _loadFonts() async {
-    if (_regular != null && _bold != null && _eagle != null) return;
+    if (_regular != null && _bold != null && _italic != null && _eagle != null) {
+      return;
+    }
     final regularData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+    final italicData = await rootBundle.load('assets/fonts/Roboto-Italic.ttf');
     _regular = pw.Font.ttf(regularData);
     _bold = pw.Font.ttf(boldData);
+    _italic = pw.Font.ttf(italicData);
     try {
       final eagleData = await rootBundle.load('assets/images/esign-eagle.png');
       _eagle = pw.MemoryImage(eagleData.buffer.asUint8List());
@@ -61,7 +66,14 @@ class WaybillPdfService {
 
   static Future<Uint8List> generateBytes(Map<String, dynamic> data) async {
     await _loadFonts();
-    final theme = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
+    final theme = pw.ThemeData.withFont(
+      base: _regular!,
+      bold: _bold!,
+      italic: _italic!,
+      // Отдельного жирного курсива нет — используем обычный курсив, чтобы
+      // жирно-курсивный текст (штамп ЭП) рендерился кириллицей, а не «забором».
+      boldItalic: _italic!,
+    );
 
     final pdf = pw.Document();
     pdf.addPage(
