@@ -35,8 +35,6 @@ const Drivers = {
         'driver-okpo': 'okpo',
         'driver-permit': 'permit',
         'driver-mintrans': 'mintrans',
-        'driver-med-name': 'medName',
-        'driver-tech-name': 'techName',
     },
 
     init() {
@@ -48,20 +46,8 @@ const Drivers = {
                 Drivers.addDriver();
             }
         });
-        document.getElementById('driver-search').addEventListener('input', (e) => {
-            Drivers._filterDrivers(e.target.value);
-        });
+        // Автозаполнение организации из настроек по умолчанию
         Drivers._prefillOrgFromSettings();
-    },
-
-    _filterDrivers(query) {
-        const q = String(query || '').toLowerCase().trim();
-        const rows = document.querySelectorAll('#drivers-tbody tr');
-        rows.forEach(row => {
-            if (!q) { row.style.display = ''; return; }
-            const text = (row.textContent || '').toLowerCase();
-            row.style.display = text.includes(q) ? '' : 'none';
-        });
     },
 
     // Переводит форму в режим создания нового водителя.
@@ -71,7 +57,7 @@ const Drivers = {
         if (form) form.reset();
         const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-        setVal('driver-okud', '0345003');
+        setVal('driver-okud', '0345001');
         setVal('driver-mintrans', '390 ОТ 28.09.2022');
         setText('add-driver-title', 'Регистрация водителя');
         setText('add-driver-subtitle', 'Заполните данные нового водителя. Поля «Организация» подставляются из настроек.');
@@ -126,7 +112,7 @@ const Drivers = {
                 if (typeof v === 'string') v = v.trim();
                 update[key] = v;
             }
-            update.okud = update.okud || '0345003';
+            update.okud = update.okud || '0345001';
             update.mintrans = update.mintrans || '390 ОТ 28.09.2022';
             update.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             update.updatedBy = Auth.currentUser.uid;
@@ -210,21 +196,71 @@ const Drivers = {
         try {
             const snapshot = await db.collection('drivers').orderBy('fullName').get();
             Drivers.drivers = [];
-            const tbody = document.getElementById('drivers-tbody');
-            tbody.innerHTML = '';
-
             snapshot.forEach(doc => {
-                const driver = { id: doc.id, ...doc.data() };
-                Drivers.drivers.push(driver);
-                tbody.insertAdjacentHTML('beforeend', Drivers.renderRow(driver));
+                Drivers.drivers.push({ id: doc.id, ...doc.data() });
             });
-
-            if (Drivers.drivers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Нет зарегистрированных водителей</td></tr>';
-            }
+            Drivers.renderList();
         } catch (error) {
             console.error('Error loading drivers:', error);
         }
+    },
+
+    // Нормализация строки для поиска: нижний регистр, ё→е, схлопывание пробелов
+    _norm(value) {
+        return (value == null ? '' : String(value))
+            .toLowerCase()
+            .replace(/ё/g, 'е')
+            .replace(/\s+/g, ' ')
+            .trim();
+    },
+
+    // Умный поиск: каждое слово запроса должно найтись в любом из полей.
+    // Телефон/гос. номер сравниваются также без пробелов и спецсимволов.
+    _matches(driver, query) {
+        const q = Drivers._norm(query);
+        if (!q) return true;
+        const fields = [
+            driver.fullName, driver.phone, driver.carModel,
+            driver.plateNumber, driver.orgName, driver.driverIdNumber,
+        ];
+        const hay = Drivers._norm(fields.join(' '));
+        const haySquished = hay.replace(/[\s+()\-.]/g, '');
+        return q.split(' ').every(token => {
+            const t = token.replace(/[\s+()\-.]/g, '');
+            return hay.includes(token) || (t && haySquished.includes(t));
+        });
+    },
+
+    filterDrivers(query) {
+        Drivers._searchQuery = query || '';
+        Drivers.renderList();
+    },
+
+    renderList() {
+        const tbody = document.getElementById('drivers-tbody');
+        if (!tbody) return;
+        const query = Drivers._searchQuery || '';
+        const list = Drivers.drivers.filter(d => Drivers._matches(d, query));
+
+        tbody.innerHTML = '';
+        if (Drivers.drivers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Нет зарегистрированных водителей</td></tr>';
+        } else if (list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Ничего не найдено по запросу «${Drivers._esc(query)}»</td></tr>`;
+        } else {
+            list.forEach(driver => {
+                tbody.insertAdjacentHTML('beforeend', Drivers.renderRow(driver));
+            });
+        }
+
+        const countEl = document.getElementById('drivers-search-count');
+        if (countEl) {
+            countEl.textContent = query
+                ? `Найдено: ${list.length} из ${Drivers.drivers.length}`
+                : `Всего: ${Drivers.drivers.length}`;
+        }
+        const clearEl = document.getElementById('drivers-search-clear');
+        if (clearEl) clearEl.style.display = query ? 'flex' : 'none';
     },
 
     renderRow(driver) {
@@ -287,8 +323,6 @@ const Drivers = {
         const okpo = document.getElementById('driver-okpo').value.trim();
         const permit = document.getElementById('driver-permit').value.trim();
         const mintrans = document.getElementById('driver-mintrans').value.trim();
-        const medName = document.getElementById('driver-med-name')?.value.trim() || '';
-        const techName = document.getElementById('driver-tech-name')?.value.trim() || '';
 
         const phone = Drivers._normalizePhone(phoneRaw);
         const password = passwordRaw || Drivers._defaultPassword(phone);
@@ -342,11 +376,9 @@ const Drivers = {
                 orgInn,
                 orgPhone,
                 orgAddress,
-                okud: okud || '0345003',
+                okud: okud || '0345001',
                 okpo,
                 permit,
-                medName,
-                techName,
                 mintrans: mintrans || '390 ОТ 28.09.2022',
                 active: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -355,7 +387,7 @@ const Drivers = {
 
             showToast(`Водитель зарегистрирован. Пароль: ${password}`, 'success');
             document.getElementById('add-driver-form').reset();
-            document.getElementById('driver-okud').value = '0345003';
+            document.getElementById('driver-okud').value = '0345001';
             document.getElementById('driver-mintrans').value = '390 ОТ 28.09.2022';
             Drivers.loadDrivers();
             showSection('drivers');

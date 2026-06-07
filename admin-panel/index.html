@@ -56,6 +56,11 @@
                 <div id="login-error" class="error-message"></div>
                 <div class="login-footer">
                     <i class="fas fa-shield-halved"></i> Безопасный вход по номеру и паролю
+                    <div class="login-legal">
+                        <a href="privacy.html" target="_blank" rel="noopener">Политика конфиденциальности</a>
+                        <span>·</span>
+                        <a href="terms.html" target="_blank" rel="noopener">Пользовательское соглашение</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -233,8 +238,16 @@
                         <i class="fas fa-plus"></i> Добавить водителя
                     </button>
                 </div>
-                <div style="margin-bottom:12px">
-                    <input type="text" id="driver-search" placeholder="🔍 Поиск по ФИО, телефону, авто, гос. номеру, организации…" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;">
+                <div class="drivers-search">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="drivers-search-input" autocomplete="off"
+                           placeholder="Поиск: ФИО, телефон, авто, гос. номер, организация…"
+                           oninput="Drivers.filterDrivers(this.value)">
+                    <button type="button" id="drivers-search-clear" class="drivers-search-clear" title="Очистить"
+                            onclick="document.getElementById('drivers-search-input').value='';Drivers.filterDrivers('')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <span id="drivers-search-count" class="drivers-search-count"></span>
                 </div>
                 <div class="table-container">
                     <table id="drivers-table">
@@ -383,6 +396,8 @@
                             <label>Вид перевозки</label>
                             <select id="driver-transport-type">
                                 <option value="Перевозка пассажиров и багажа легковым такси">Перевозка пассажиров и багажа легковым такси</option>
+                                <option value="пригородное, городское">пригородное, городское</option>
+                                <option value="междугороднее">междугороднее</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -397,7 +412,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Форма по ОКУД</label>
-                            <input type="text" id="driver-okud" placeholder="0345003" value="0345003">
+                            <input type="text" id="driver-okud" placeholder="0345001" value="0345001">
                         </div>
                         <div class="form-group">
                             <label>Форма по ОКПО</label>
@@ -414,9 +429,6 @@
                             <input type="text" id="driver-mintrans" placeholder="390 ОТ 28.09.2022" value="390 ОТ 28.09.2022">
                         </div>
                     </div>
-
-                    <div class="form-section-title"><i class="fas fa-user-md"></i> Медосмотр и тех. контроль</div>
-                    <p class="form-hint" style="margin:0 0 8px;color:#8A8A8A;font-size:12px">Медик и контролёр заданы автоматически для всех ЭПЛ: Самышина Е.А. / Темишов Б.</p>
 
                     <button type="submit" class="btn btn-primary btn-glow">
                         <i class="fas fa-user-plus"></i> <span id="add-driver-submit-text">Зарегистрировать водителя</span>

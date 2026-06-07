@@ -59,16 +59,22 @@
         .exam .desc { font-size: 8px; font-weight: bold; white-space: pre-line; }
         .exam .ctr { text-align: center; font-weight: bold; font-size: 9.5px; }
 
-        /* Штамп электронной подписи (синяя рамка, герб РФ) */
+        /* Штамп усиленной квалифицированной электронной подписи (как на бумажном бланке) */
         .esign {
-            background: #fff; border: 1px solid #4a90d9; border-radius: 5px;
-            padding: 4px 6px; display: flex; gap: 5px; align-items: flex-start;
+            position: relative; border: 1.4px solid #3a6fb0; border-radius: 7px;
+            background: #fff; padding: 5px 8px 5px 46px; min-height: 50px;
+            display: flex; align-items: center; overflow: hidden;
         }
-        .esign .eagle { width: 30px; height: 30px; flex: 0 0 auto; margin-top: 1px; }
-        .esign .head { color: #1a4e8e; font-weight: bold; font-style: italic; font-size: 7px; line-height: 1.2; }
-        .esign .role { font-size: 7px; color: #000; font-weight: bold; margin-top: 2px; }
-        .esign .name { font-size: 7.5px; font-weight: bold; color: #000; }
-        .esign .valid { font-size: 6.5px; color: #1a4e8e; margin-top: 1px; }
+        .esign .emblem {
+            position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+            width: 34px; height: auto; opacity: .92;
+        }
+        .esign .etext { width: 100%; }
+        .esign .head { color: #3a6fb0; font-style: italic; font-weight: 600; font-size: 9px; line-height: 1.12; }
+        .esign .role { font-size: 8.5px; font-weight: bold; color: #111; margin-top: 2px; }
+        .esign .name { font-size: 9px; font-weight: bold; color: #111; }
+        .esign .cert { font-size: 5.4px; color: #333; margin-top: 1px; letter-spacing: .3px; }
+        .esign .valid { font-size: 6px; color: #333; }
 
         .release { padding: 8px 6px; text-align: center; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -80,8 +86,8 @@
 
         /* Подпись водителя — крупная, без «коробки» */
         .sign-cell { text-align: center; vertical-align: middle; }
-        .sign-img { height: 56px; max-width: 100%; object-fit: contain; }
-        .sign-text { font-family: 'Brush Script MT','Segoe Script',cursive; font-size: 26px; color: #14387a; font-style: italic; }
+        .sign-img { height: 84px; max-width: 100%; object-fit: contain; }
+        .sign-text { font-family: 'Brush Script MT','Segoe Script','Comic Sans MS',cursive; font-size: 42px; line-height: 1; color: #14387a; font-style: italic; }
 
         .work-split { text-align: center; font-weight: bold; font-size: 10px; margin: 6px 0 3px; }
         .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px; }
@@ -131,31 +137,37 @@
             return `${a}.${b}~`;
         }
 
-        function formatSerial(hex) {
-            if (!hex) return '';
-            const c = String(hex).replace(/\s/g, '');
-            let r = '';
-            for (let i = 0; i < c.length; i += 2) {
-                if (i > 0) r += ' ';
-                r += c.substring(i, i + 2).toUpperCase();
-            }
-            return r;
+        // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
+        const MED = {
+            name: 'Самышина Елена Александровна',
+            serial: 'b8d46c0e277c1e06a40c8e3e253d9e6c',
+            issued: '15.11.2025', expires: '15.11.2026',
+        };
+        const TECH = {
+            name: 'Темишов Бекмырза',
+            serial: '519756c9191b011ca7d2e9508fc7877d',
+            issued: '20.11.2025', expires: '20.11.2026',
+        };
+
+        // Форматирование серийного номера сертификата: верхний регистр, парами по 2 символа
+        function fmtSerial(serial) {
+            const hex = String(serial || '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+            return hex ? (hex.match(/.{1,2}/g) || []).join(' ') : '';
         }
 
-        const EAGLE_SVG = `<svg class="eagle" viewBox="0 0 120 114" xmlns="http://www.w3.org/2000/svg"><g fill="#9db8db" stroke="#6f8fc4" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round"><path d="M60 50 C57 56 56 70 58 86 L60 92 L62 86 C64 70 63 56 60 50 Z"/><path d="M53 84 C55 92 57 98 60 102 C63 98 65 92 67 84 C64 88 56 88 53 84 Z"/><path d="M58 52 C50 50 42 48 35 44 C40 46 41 50 38 52 C30 49 22 47 15 49 C22 50 24 54 21 57 C14 56 9 58 5 62 C12 61 24 60 33 64 C30 60 31 56 36 57 C34 53 36 50 41 51 C40 47 43 45 48 47 C47 44 50 43 54 45 C53 49 55 51 58 52 Z"/><path d="M62 52 C70 50 78 48 85 44 C80 46 79 50 82 52 C90 49 98 47 105 49 C98 50 96 54 99 57 C106 56 111 58 115 62 C108 61 96 60 87 64 C90 60 89 56 84 57 C86 53 84 50 79 51 C80 47 77 45 72 47 C73 44 70 43 66 45 C67 49 65 51 62 52 Z"/><path d="M57 48 C53 44 49 42 45 43 C49 41 50 37 48 34 C46 31 42 30 39 32 C42 30 44 27 43 24 C47 26 52 32 55 39 C56 43 57 46 58 49 Z"/><path d="M40 33 C36 32 33 34 33 37 C35 36 38 37 40 38 Z"/><path d="M63 48 C67 44 71 42 75 43 C71 41 70 37 72 34 C74 31 78 30 81 32 C78 30 76 27 77 24 C73 26 68 32 65 39 C64 43 63 46 62 49 Z"/><path d="M80 33 C84 32 87 34 87 37 C85 36 82 37 80 38 Z"/><path d="M40 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/><path d="M68 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/><path d="M52 20 l3 -5 l3 3 l2 -5 l2 5 l3 -3 l3 5 Z"/><path d="M60 60 C57 61 55 63 55 67 C55 73 58 77 60 79 C62 77 65 73 65 67 C65 63 63 61 60 60 Z" fill="#86a4d0"/></g></svg>`;
-
         function eSignBox(role, name, serial, issued, expires) {
-            const serialLine = serial ? `<div class="valid">Сертификат: ${esc(formatSerial(serial))}</div>` : '';
+            const cert = serial
+                ? `<div class="cert">Сертификат: ${esc(fmtSerial(serial))}</div>` : '';
             const valid = (issued || expires)
                 ? `<div class="valid">Действителен: с ${fmtShort(issued)} по ${fmtShort(expires)}</div>` : '';
             return `
             <div class="esign">
-                ${EAGLE_SVG}
-                <div>
+                <img class="emblem" src="img/esign-eagle.png" alt="">
+                <div class="etext">
                     <div class="head">Документ подписан<br>электронной подписью</div>
                     <div class="role">${esc(role)}</div>
-                    <div class="name">${esc(name)}</div>
-                    ${serialLine}
+                    <div class="name">${esc(name) || '—'}</div>
+                    ${cert}
                     ${valid}
                 </div>
             </div>`;
@@ -217,13 +229,13 @@
                     </td>
                     <td style="padding:0">
                         <div class="codes-header">Коды</div>
-                        <div class="codes-row"><span>Форма по ОКУД</span><span class="v">0345003</span></div>
-                        <div class="codes-row"><span>Форма по ОКПО</span><span class="v">36271045</span></div>
+                        <div class="codes-row"><span>Форма по ОКУД</span><span class="v">${esc(d.okud || '0345001')}</span></div>
+                        <div class="codes-row"><span>Форма по ОКПО</span><span class="v">${esc(d.okpo || '')}</span></div>
                         <div class="codes-row"><span>Телефон (вод.)</span><span class="v">${esc(d.driverPhone || '')}</span></div>
                         <div class="codes-row"><span>СНИЛС (вод.)</span><span class="v">${esc(d.snils || '')}</span></div>
                         <div class="codes-row"><span>ИНН (вод.)</span><span class="v">${esc(d.driverInn || '')}</span></div>
-                        <div class="codes-row"><span>Гаражный номер</span><span class="v">${esc(d.garageNumber || d.plateNumber || '')}</span></div>
-                        <div class="codes-row"><span>Табельный номер</span><span class="v">${esc(d.tabNumber || d.plateNumber || '')}</span></div>
+                        <div class="codes-row"><span>Гаражный номер</span><span class="v">${esc(d.garageNumber || '')}</span></div>
+                        <div class="codes-row"><span>Табельный номер</span><span class="v">${esc(d.tabNumber || '')}</span></div>
                     </td>
                 </tr>
             </table>
@@ -251,8 +263,8 @@
                 </tr>
             </table>
 
-            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName || 'Самышина Елена Александровна', d.medSerial || 'b8d46c0e277c1e06a40c8e3e253d9e6c', d.medIssued || '2025-11-15', d.medExpires || '2026-11-15')}
-            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName || 'Темишов Бекмырза', d.techSerial || '519756c9191b011ca7d2e9508fc7877d', d.techIssued || '2025-11-20', d.techExpires || '2026-11-20')}
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName || MED.name, d.medCertSerial || MED.serial, d.medIssued || MED.issued, d.medExpires || MED.expires)}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName || TECH.name, d.techCertSerial || TECH.serial, d.techIssued || TECH.issued, d.techExpires || TECH.expires)}
 
             <table style="margin-top:3px" class="nob"><tr>
                 <td class="nob" style="width:70%;padding:0;padding-right:8px">

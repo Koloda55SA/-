@@ -10,34 +10,58 @@ import 'package:pdf/widgets.dart' as pw;
 class WaybillPdfService {
   static pw.Font? _regular;
   static pw.Font? _bold;
-  static pw.Font? _italic;
+  static pw.MemoryImage? _eagle;
+
+  // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
+  static const Map<String, String> _medDefault = {
+    'name': 'Самышина Елена Александровна',
+    'serial': 'b8d46c0e277c1e06a40c8e3e253d9e6c',
+    'issued': '15.11.2025',
+    'expires': '15.11.2026',
+  };
+  static const Map<String, String> _techDefault = {
+    'name': 'Темишов Бекмырза',
+    'serial': '519756c9191b011ca7d2e9508fc7877d',
+    'issued': '20.11.2025',
+    'expires': '20.11.2026',
+  };
+
+  /// Серийный номер сертификата: верхний регистр, парами по 2 символа.
+  static String _fmtSerial(String serial) {
+    final hex = serial.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toUpperCase();
+    if (hex.isEmpty) return '';
+    final parts = <String>[];
+    for (var i = 0; i < hex.length; i += 2) {
+      parts.add(hex.substring(i, i + 2 > hex.length ? hex.length : i + 2));
+    }
+    return parts.join(' ');
+  }
 
   // Цвета шаблона
   static const PdfColor _green = PdfColor.fromInt(0xFFD9EAD3);
   static const PdfColor _blueBorder = PdfColor.fromInt(0xFF4A90D9);
-  static const PdfColor _blueLight = PdfColor.fromInt(0xFFE8F0FE);
   // Подписи полей делаем почти чёрными, чтобы хорошо читались на печати/скане.
   static const PdfColor _grey = PdfColor.fromInt(0xFF1A1A1A);
   static const PdfColor _greyLight = PdfColor.fromInt(0xFF555555);
   static const PdfColor _signBlue = PdfColor.fromInt(0xFF1A4E8E);
 
   static Future<void> _loadFonts() async {
-    if (_regular != null && _bold != null && _italic != null) return;
+    if (_regular != null && _bold != null && _eagle != null) return;
     final regularData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
-    final italicData = await rootBundle.load('assets/fonts/Roboto-Italic.ttf');
     _regular = pw.Font.ttf(regularData);
     _bold = pw.Font.ttf(boldData);
-    _italic = pw.Font.ttf(italicData);
+    try {
+      final eagleData = await rootBundle.load('assets/images/esign-eagle.png');
+      _eagle = pw.MemoryImage(eagleData.buffer.asUint8List());
+    } catch (_) {
+      _eagle = null;
+    }
   }
 
   static Future<Uint8List> generateBytes(Map<String, dynamic> data) async {
     await _loadFonts();
-    final theme = pw.ThemeData.withFont(
-      base: _regular!,
-      bold: _bold!,
-      italic: _italic!,
-    );
+    final theme = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
 
     final pdf = pw.Document();
     pdf.addPage(
@@ -54,6 +78,13 @@ class WaybillPdfService {
   static String _v(Map<String, dynamic> d, String key, [String fallback = '']) {
     final v = d[key];
     if (v == null) return fallback;
+    return v.toString();
+  }
+
+  /// Значение поля или fallback, если оно отсутствует ИЛИ пустое.
+  static String _vne(Map<String, dynamic> d, String key, String fallback) {
+    final v = d[key];
+    if (v == null || v.toString().trim().isEmpty) return fallback;
     return v.toString();
   }
 
@@ -77,10 +108,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'medTime'),
           signerLabel: 'Медицинский работник',
-          signerName: _v(d, 'medName'),
-          signerSerial: _v(d, 'medSerial'),
-          signerIssued: _v(d, 'medIssued'),
-          signerExpires: _v(d, 'medExpires'),
+          signerName: _vne(d, 'medName', _medDefault['name']!),
+          signerSerial: _vne(d, 'medCertSerial', _medDefault['serial']!),
+          signerIssued: _vne(d, 'medIssued', _medDefault['issued']!),
+          signerExpires: _vne(d, 'medExpires', _medDefault['expires']!),
         ),
         pw.SizedBox(height: 2),
         _examBlock(
@@ -89,10 +120,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'techTime'),
           signerLabel: 'Контролёр тех.сост. ТС',
-          signerName: _v(d, 'techName'),
-          signerSerial: _v(d, 'techSerial'),
-          signerIssued: _v(d, 'techIssued'),
-          signerExpires: _v(d, 'techExpires'),
+          signerName: _vne(d, 'techName', _techDefault['name']!),
+          signerSerial: _vne(d, 'techCertSerial', _techDefault['serial']!),
+          signerIssued: _vne(d, 'techIssued', _techDefault['issued']!),
+          signerExpires: _vne(d, 'techExpires', _techDefault['expires']!),
         ),
         pw.SizedBox(height: 3),
         _shiftStartAndRelease(d),
@@ -234,15 +265,14 @@ class WaybillPdfService {
                           fontSize: 8, fontWeight: pw.FontWeight.bold)),
                 ),
               ),
-              _codeRow('Форма по ОКУД', '0345003'),
-              _codeRow('Форма по ОКПО', '36271045'),
+              _codeRow('Форма по ОКУД',
+                  _v(d, 'okud').isEmpty ? '0345001' : _v(d, 'okud')),
+              _codeRow('Форма по ОКПО', _v(d, 'okpo')),
               _codeRow('Телефон (вод.)', _v(d, 'driverPhone')),
               _codeRow('СНИЛС (вод.)', _v(d, 'snils')),
               _codeRow('ИНН (вод.)', _v(d, 'driverInn')),
-              _codeRow('Гаражный номер',
-                  _v(d, 'garageNumber').isEmpty ? _v(d, 'plateNumber') : _v(d, 'garageNumber')),
-              _codeRow('Табельный номер',
-                  _v(d, 'tabNumber').isEmpty ? _v(d, 'plateNumber') : _v(d, 'tabNumber')),
+              _codeRow('Гаражный номер', _v(d, 'garageNumber')),
+              _codeRow('Табельный номер', _v(d, 'tabNumber')),
             ],
           ),
         ]),
@@ -439,9 +469,9 @@ class WaybillPdfService {
     required String time,
     required String signerLabel,
     required String signerName,
+    required String signerSerial,
     required String signerIssued,
     required String signerExpires,
-    String signerSerial = '',
   }) {
     return pw.Table(
       border: pw.TableBorder.all(width: 0.6),
@@ -454,6 +484,7 @@ class WaybillPdfService {
       defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
       children: [
         pw.TableRow(children: [
+          // Левая: зеленый фон с описанием
           pw.Container(
             color: _green,
             padding: const pw.EdgeInsets.all(4),
@@ -471,6 +502,7 @@ class WaybillPdfService {
               ],
             ),
           ),
+          // Дата
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Center(
@@ -478,6 +510,7 @@ class WaybillPdfService {
                   style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
+          // Время
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Center(
@@ -485,6 +518,7 @@ class WaybillPdfService {
                   style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
             ),
           ),
+          // Электронная подпись
           pw.Padding(
             padding: const pw.EdgeInsets.all(3),
             child: _eSignBox(
@@ -500,101 +534,63 @@ class WaybillPdfService {
     );
   }
 
-  /// Штамп УКЭП: синяя рамка, герб РФ (двуглавый орёл, бледно-голубой),
-  /// курсивный текст «Документ подписан электронной подписью»,
-  /// должность, ФИО, серийник сертификата (парами), срок действия.
-  static const String _eagleSvg =
-      '<svg viewBox="0 0 120 114" xmlns="http://www.w3.org/2000/svg">'
-      '<g fill="#9db8db" stroke="#6f8fc4" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round">'
-      '<path d="M60 50 C57 56 56 70 58 86 L60 92 L62 86 C64 70 63 56 60 50 Z"/>'
-      '<path d="M53 84 C55 92 57 98 60 102 C63 98 65 92 67 84 C64 88 56 88 53 84 Z"/>'
-      '<path d="M58 52 C50 50 42 48 35 44 C40 46 41 50 38 52 C30 49 22 47 15 49 C22 50 24 54 21 57 C14 56 9 58 5 62 C12 61 24 60 33 64 C30 60 31 56 36 57 C34 53 36 50 41 51 C40 47 43 45 48 47 C47 44 50 43 54 45 C53 49 55 51 58 52 Z"/>'
-      '<path d="M62 52 C70 50 78 48 85 44 C80 46 79 50 82 52 C90 49 98 47 105 49 C98 50 96 54 99 57 C106 56 111 58 115 62 C108 61 96 60 87 64 C90 60 89 56 84 57 C86 53 84 50 79 51 C80 47 77 45 72 47 C73 44 70 43 66 45 C67 49 65 51 62 52 Z"/>'
-      '<path d="M57 48 C53 44 49 42 45 43 C49 41 50 37 48 34 C46 31 42 30 39 32 C42 30 44 27 43 24 C47 26 52 32 55 39 C56 43 57 46 58 49 Z"/>'
-      '<path d="M40 33 C36 32 33 34 33 37 C35 36 38 37 40 38 Z"/>'
-      '<path d="M63 48 C67 44 71 42 75 43 C71 41 70 37 72 34 C74 31 78 30 81 32 C78 30 76 27 77 24 C73 26 68 32 65 39 C64 43 63 46 62 49 Z"/>'
-      '<path d="M80 33 C84 32 87 34 87 37 C85 36 82 37 80 38 Z"/>'
-      '<path d="M40 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/>'
-      '<path d="M68 24 l3 -4 l2 2 l2 -3 l2 3 l2 -2 l3 4 Z"/>'
-      '<path d="M52 20 l3 -5 l3 3 l2 -5 l2 5 l3 -3 l3 5 Z"/>'
-      '<path d="M60 60 C57 61 55 63 55 67 C55 73 58 77 60 79 C62 77 65 73 65 67 C65 63 63 61 60 60 Z" fill="#86a4d0"/>'
-      '</g></svg>';
-
+  /// Штамп усиленной квалифицированной электронной подписи
+  /// (синяя рамка, герб, серийный номер сертификата — как на бумажном бланке).
   static pw.Widget _eSignBox({
     required String label,
     required String name,
-    String serial = '',
+    required String serial,
     required String issued,
     required String expires,
   }) {
-    final serialFormatted = _formatSerial(serial);
+    final serialText = _fmtSerial(serial);
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: PdfColors.white,
-        border: pw.Border.all(width: 0.8, color: _blueBorder),
+        border: pw.Border.all(width: 0.9, color: _blueBorder),
         borderRadius: pw.BorderRadius.circular(4),
       ),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      padding: const pw.EdgeInsets.fromLTRB(4, 4, 5, 4),
       child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.SizedBox(
-            width: 26,
-            height: 26,
-            child: pw.SvgImage(svg: _eagleSvg),
-          ),
-          pw.SizedBox(width: 4),
+          // Герб (двуглавый орёл, бледно-голубой)
+          if (_eagle != null)
+            pw.Container(
+              width: 22,
+              margin: const pw.EdgeInsets.only(right: 4),
+              child: pw.Image(_eagle!),
+            ),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Документ подписан',
+                pw.Text('Документ подписан\nэлектронной подписью',
                     style: pw.TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 6.6,
                         fontWeight: pw.FontWeight.bold,
                         fontStyle: pw.FontStyle.italic,
-                        color: _signBlue)),
-                pw.Text('электронной подписью',
-                    style: pw.TextStyle(
-                        fontSize: 6.5,
-                        fontWeight: pw.FontWeight.bold,
-                        fontStyle: pw.FontStyle.italic,
-                        color: _signBlue)),
+                        color: _blueBorder)),
                 pw.SizedBox(height: 1.5),
                 pw.Text(label,
                     style: pw.TextStyle(
-                        fontSize: 6, fontWeight: pw.FontWeight.bold)),
-                pw.Text(name,
+                        fontSize: 6, fontWeight: pw.FontWeight.bold, color: _grey)),
+                pw.Text(name.isEmpty ? '—' : name,
                     style: pw.TextStyle(
-                        fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
-                if (serialFormatted.isNotEmpty) ...[
-                  pw.SizedBox(height: 1),
-                  pw.Text('Сертификат: $serialFormatted',
-                      style: const pw.TextStyle(fontSize: 5, color: _signBlue)),
-                ],
-                if (issued.isNotEmpty || expires.isNotEmpty) ...[
-                  pw.SizedBox(height: 1),
+                        fontSize: 6.6, fontWeight: pw.FontWeight.bold)),
+                if (serialText.isNotEmpty)
+                  pw.Text('Сертификат: $serialText',
+                      style: const pw.TextStyle(fontSize: 4.2, color: _grey)),
+                if (issued.isNotEmpty || expires.isNotEmpty)
                   pw.Text(
                       'Действителен: с ${_fmtDate(issued)} по ${_fmtDate(expires)}',
-                      style: const pw.TextStyle(fontSize: 5, color: _signBlue)),
-                ],
+                      style: const pw.TextStyle(fontSize: 4.8, color: _grey)),
               ],
             ),
           ),
         ],
       ),
     );
-  }
-
-  static String _formatSerial(String hex) {
-    if (hex.isEmpty) return '';
-    final clean = hex.replaceAll(RegExp(r'\s'), '');
-    final buf = StringBuffer();
-    for (var i = 0; i < clean.length; i += 2) {
-      if (i > 0) buf.write(' ');
-      buf.write(clean.substring(i, i + 2 > clean.length ? clean.length : i + 2).toUpperCase());
-    }
-    return buf.toString();
   }
 
   // ============== 7. Начало смены + "ВЫПУСК НА ЛИНИЮ РАЗРЕШЕН" ==============
@@ -709,7 +705,7 @@ class WaybillPdfService {
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: pw.Image(
           pw.MemoryImage(signatureBytes),
-          height: 48,
+          height: 72,
           fit: pw.BoxFit.contain,
         ),
       );
@@ -721,7 +717,7 @@ class WaybillPdfService {
         child: pw.Text(
           _signature(_v(d, 'driverName')),
           style: pw.TextStyle(
-            fontSize: 26,
+            fontSize: 40,
             fontWeight: pw.FontWeight.bold,
             color: _signBlue,
           ),
@@ -828,7 +824,9 @@ class WaybillPdfService {
         ]),
         pw.TableRow(children: [
           _cellLabel('Окончание смены'),
-          _cellValue(_v(d, 'shiftEndDate', _v(d, 'date'))),
+          _cellValue(_v(d, 'shiftEndDate').isEmpty
+              ? _v(d, 'date')
+              : _v(d, 'shiftEndDate')),
           _cellValue(_v(d, 'shiftEnd'), bold: true),
         ]),
         pw.TableRow(children: [

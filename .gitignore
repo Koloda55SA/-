@@ -46,3 +46,9 @@ photo_*.jpg
 _ai_local/
 баги*/
 *баги*/
+
+# Android signing (never commit)
+*.jks
+*.keystore
+mobile-app/android/key.properties
+key.properties

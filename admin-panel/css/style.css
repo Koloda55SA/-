@@ -552,3 +552,69 @@ tr:hover td { background: var(--card-hover); }
     .hero-text h1 { font-size: 20px; }
 }
 
+
+/* ===== Умный поиск водителей ===== */
+.drivers-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0 14px;
+    margin-bottom: 16px;
+    height: 48px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.drivers-search:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.drivers-search > i.fa-search {
+    color: var(--text-light);
+    font-size: 15px;
+}
+.drivers-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 15px;
+    height: 100%;
+}
+.drivers-search input::placeholder { color: var(--text-faint); }
+.drivers-search-clear {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: var(--card-hover);
+    color: var(--text-light);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.drivers-search-clear:hover { color: var(--text); background: var(--border); }
+.drivers-search-count {
+    color: var(--text-light);
+    font-size: 13px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+/* ===== Ссылки на юр. документы под формой входа ===== */
+.login-legal {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+.login-legal a { color: var(--primary); text-decoration: none; }
+.login-legal a:hover { text-decoration: underline; }
+.login-legal span { color: var(--text-faint); }
