@@ -7,6 +7,7 @@ import 'waybill_screen.dart';
 import 'waybill_qr_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+import 'tech_support_screen.dart';
 
 /// Главный экран после входа: «дом» (новый ЭПЛ + активный лист),
 /// личный кабинет (карточка водителя), история, настройки.
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = <Widget>[
       _DashboardPage(driverData: widget.driverData, driverDocId: widget.driverDocId),
       ProfileScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
+      TechSupportScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
       SettingsScreen(driverData: widget.driverData),
     ];
 
@@ -413,6 +415,24 @@ class _DashboardPageState extends State<_DashboardPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _QuickAction(
+                    icon: Icons.chat_bubble_outline,
+                    label: 'Поддержка',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TechSupportScreen(
+                            driverData: widget.driverData,
+                            driverDocId: widget.driverDocId,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _QuickAction(
                     icon: Icons.settings_outlined,
                     label: 'Настройки',
                     onTap: () {
@@ -737,6 +757,7 @@ class _BottomBar extends StatelessWidget {
     final items = [
       (Icons.home_outlined, Icons.home, 'Главная'),
       (Icons.person_outline, Icons.person, 'Профиль'),
+      (Icons.chat_bubble_outline, Icons.chat_bubble, 'Поддержка'),
       (Icons.settings_outlined, Icons.settings, 'Настройки'),
     ];
     return SafeArea(

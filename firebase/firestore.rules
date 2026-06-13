@@ -24,6 +24,32 @@ service cloud.firestore {
       allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == driverId);
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
+
+      // CRM-заметки по водителю — только админ.
+      match /notes/{noteId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // Техподдержка: диалог водителя с админом.
+    // Doc ID диалога = Auth UID водителя. Водитель видит/пишет только свой диалог,
+    // админ — все диалоги. Сообщения хранятся в подколлекции messages.
+    match /supportChats/{driverId} {
+      allow get, create, update: if isAdmin() ||
+                       (isAuthenticated() && request.auth.uid == driverId);
+      allow list: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read, create: if isAdmin() ||
+                       (isAuthenticated() && request.auth.uid == driverId);
+        // Историю переписки не редактируем и не удаляем.
+        allow update, delete: if false;
+      }
+    }
+
+    // Оплаты водителей (бухгалтерия). Полностью на стороне админа.
+    match /payments/{paymentId} {
+      allow read, write: if isAdmin();
     }
 
     // Путевые листы:

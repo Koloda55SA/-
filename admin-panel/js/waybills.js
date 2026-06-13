@@ -1,6 +1,7 @@
 // Waybills Management Module - Updated for per-driver org
 const Waybills = {
     waybills: [],
+    _unsub: null,
 
     // HTML-escape для безопасной вставки в innerHTML
     _esc(value) {
@@ -13,29 +14,35 @@ const Waybills = {
             .replace(/'/g, '&#39;');
     },
 
-    async loadWaybills() {
-        try {
-            const snapshot = await db.collection('waybills')
-                .orderBy('createdAt', 'desc')
-                .limit(50)
-                .get();
-
-            Waybills.waybills = [];
-            const tbody = document.getElementById('waybills-tbody');
-            tbody.innerHTML = '';
-
-            snapshot.forEach(doc => {
-                const waybill = { id: doc.id, ...doc.data() };
-                Waybills.waybills.push(waybill);
-                tbody.insertAdjacentHTML('beforeend', Waybills.renderRow(waybill));
+    // Живая подписка на последние 50 путевых листов: новые ЭПЛ и смена статуса
+    // («Открыт» → «Закрыт») отображаются мгновенно, без перезагрузки.
+    loadWaybills() {
+        if (Waybills._unsub) return;
+        Waybills._unsub = db.collection('waybills')
+            .orderBy('createdAt', 'desc')
+            .limit(50)
+            .onSnapshot(snapshot => {
+                Waybills.waybills = [];
+                const tbody = document.getElementById('waybills-tbody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const waybill = { id: doc.id, ...doc.data() };
+                    Waybills.waybills.push(waybill);
+                    tbody.insertAdjacentHTML('beforeend', Waybills.renderRow(waybill));
+                });
+                if (Waybills.waybills.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Нет путевых листов</td></tr>';
+                }
+                if (typeof updateDashboard === 'function') updateDashboard();
+            }, error => {
+                console.error('Waybills onSnapshot error:', error);
             });
+    },
 
-            if (Waybills.waybills.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Нет путевых листов</td></tr>';
-            }
-        } catch (error) {
-            console.error('Error loading waybills:', error);
-        }
+    // Отписка от realtime (при выходе из аккаунта).
+    stopRealtime() {
+        if (Waybills._unsub) { Waybills._unsub(); Waybills._unsub = null; }
     },
 
     renderRow(waybill) {

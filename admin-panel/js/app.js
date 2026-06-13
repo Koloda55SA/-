@@ -13,6 +13,8 @@ function showSection(sectionName) {
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
         'requests': 'Заявки',
+        'support': 'Техподдержка',
+        'accounting': 'Бухгалтерия',
         'settings': 'Настройки'
     };
     document.getElementById('page-title').textContent = titles[sectionName] || '';
@@ -31,6 +33,16 @@ function showSection(sectionName) {
     // Подгружаем заявки на дополнительные ЭПЛ
     if (sectionName === 'requests' && typeof Requests !== 'undefined') {
         Requests.load();
+    }
+
+    // Техподдержка — список чатов с водителями
+    if (sectionName === 'support' && typeof Support !== 'undefined') {
+        Support.load();
+    }
+
+    // Бухгалтерия — таблица оплат за выбранный месяц
+    if (sectionName === 'accounting' && typeof Accounting !== 'undefined') {
+        Accounting.load();
     }
 }
 
@@ -95,21 +107,39 @@ function initTheme() {
     updateThemeUI(saved);
 }
 
+// Обновление статистики на «Меню». Водителей считаем из живого кэша
+// (Drivers.drivers держится в реальном времени), путевые листы — дешёвым
+// серверным агрегатом count(), чтобы не выкачивать всю коллекцию.
 async function updateDashboard() {
     try {
-        const driversSnap = await db.collection('drivers').get();
-        const waybillsSnap = await db.collection('waybills').get();
         const today = new Date().toLocaleDateString('ru-RU');
+        const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-        let activeCount = 0;
-        let todayCount = 0;
-        driversSnap.forEach(doc => { if (doc.data().active !== false) activeCount++; });
-        waybillsSnap.forEach(doc => { if (doc.data().date === today) todayCount++; });
+        // Водители — из realtime-кэша, если он уже наполнен.
+        if (typeof Drivers !== 'undefined' && Drivers._unsub) {
+            setStat('stat-drivers', Drivers.drivers.length);
+            setStat('stat-active', Drivers.drivers.filter(d => d.active !== false).length);
+        } else {
+            const driversSnap = await db.collection('drivers').get();
+            let activeCount = 0;
+            driversSnap.forEach(doc => { if (doc.data().active !== false) activeCount++; });
+            setStat('stat-drivers', driversSnap.size);
+            setStat('stat-active', activeCount);
+        }
 
-        document.getElementById('stat-drivers').textContent = driversSnap.size;
-        document.getElementById('stat-active').textContent = activeCount;
-        document.getElementById('stat-waybills').textContent = waybillsSnap.size;
-        document.getElementById('stat-today').textContent = todayCount;
+        // Путевые листы — серверный агрегат (1 чтение вместо всей коллекции).
+        try {
+            const totalAgg = await db.collection('waybills').count().get();
+            setStat('stat-waybills', totalAgg.data().count);
+            const todayAgg = await db.collection('waybills').where('date', '==', today).count().get();
+            setStat('stat-today', todayAgg.data().count);
+        } catch (_) {
+            // Если агрегаты недоступны — считаем из загруженных (до 50) листов.
+            if (typeof Waybills !== 'undefined') {
+                setStat('stat-waybills', Waybills.waybills.length);
+                setStat('stat-today', Waybills.waybills.filter(w => w.date === today).length);
+            }
+        }
     } catch (e) {
         console.error('Dashboard update error:', e);
     }
@@ -120,6 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
     Auth.init();
     Drivers.init();
     Settings.init();
+    if (typeof Support !== 'undefined') Support.init();
+    if (typeof Accounting !== 'undefined') Accounting.init();
 
     document.querySelectorAll('.sidebar-menu li').forEach(item => {
         item.addEventListener('click', () => {

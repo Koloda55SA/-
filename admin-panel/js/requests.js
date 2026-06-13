@@ -4,6 +4,7 @@
 // Админ подтверждает (+60 к лимиту) или отклоняет.
 const Requests = {
     QUOTA_STEP: 60,
+    _unsub: null,
 
     // HTML-escape для безопасной вставки в innerHTML
     _esc(value) {
@@ -26,26 +27,36 @@ const Requests = {
         return '<span class="status-badge" style="background:#f59e0b22;color:#f59e0b;">Ожидает</span>';
     },
 
-    async load() {
+    // Живая подписка на заявки: новая заявка от водителя и смена статуса
+    // отображаются мгновенно. Подписка ставится один раз.
+    load() {
         const tbody = document.getElementById('requests-tbody');
         if (!tbody) return;
+        if (Requests._unsub) return;
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Загрузка…</td></tr>';
-        try {
-            const snapshot = await db.collection('quotaRequests')
-                .orderBy('requestedAt', 'desc')
-                .get();
-            tbody.innerHTML = '';
-            if (snapshot.empty) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Заявок пока нет</td></tr>';
-                return;
-            }
-            snapshot.forEach(doc => {
-                tbody.insertAdjacentHTML('beforeend', Requests.renderRow(doc.id, doc.data() || {}));
+        Requests._unsub = db.collection('quotaRequests')
+            .orderBy('requestedAt', 'desc')
+            .onSnapshot(snapshot => {
+                const tb = document.getElementById('requests-tbody');
+                if (!tb) return;
+                tb.innerHTML = '';
+                if (snapshot.empty) {
+                    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Заявок пока нет</td></tr>';
+                    return;
+                }
+                snapshot.forEach(doc => {
+                    tb.insertAdjacentHTML('beforeend', Requests.renderRow(doc.id, doc.data() || {}));
+                });
+            }, e => {
+                console.error('Error loading quota requests:', e);
+                const tb = document.getElementById('requests-tbody');
+                if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:24px;">Ошибка загрузки заявок</td></tr>';
             });
-        } catch (e) {
-            console.error('Error loading quota requests:', e);
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:24px;">Ошибка загрузки заявок</td></tr>';
-        }
+    },
+
+    // Отписка от realtime (при выходе из аккаунта).
+    stopRealtime() {
+        if (Requests._unsub) { Requests._unsub(); Requests._unsub = null; }
     },
 
     renderRow(reqId, r) {

@@ -186,6 +186,12 @@ const Auth = {
     },
 
     showLogin() {
+        // Снимаем все realtime-подписки, чтобы после выхода не сыпались
+        // ошибки прав доступа (permission-denied).
+        [Drivers, Waybills, Requests,
+         (typeof Support !== 'undefined' ? Support : null),
+         (typeof Accounting !== 'undefined' ? Accounting : null)]
+            .forEach(m => { if (m && typeof m.stopRealtime === 'function') m.stopRealtime(); });
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.add('active');
         document.getElementById('dashboard-page').classList.remove('active');

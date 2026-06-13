@@ -6,6 +6,7 @@ const Drivers = {
     drivers: [],
     _secondaryApp: null,
     _editingId: null,
+    _unsub: null,
 
     // Соответствие «id поля формы» → «ключ в Firestore». Используется и для заполнения,
     // и для сохранения при редактировании.
@@ -35,6 +36,16 @@ const Drivers = {
         'driver-okpo': 'okpo',
         'driver-permit': 'permit',
         'driver-mintrans': 'mintrans',
+        'driver-monthly-price': 'monthlyPrice',
+        'driver-crm-status': 'crmStatus',
+    },
+
+    // Подписи и цвета CRM-статусов водителя.
+    CRM_STATUSES: {
+        active: { label: 'Активен',     cls: 'status-active' },
+        lead:   { label: 'Лид',         cls: 'status-open' },
+        paused: { label: 'На паузе',    cls: 'status-inactive' },
+        debtor: { label: 'Должник',     cls: 'status-debtor' },
     },
 
     init() {
@@ -114,6 +125,8 @@ const Drivers = {
             }
             update.okud = update.okud || '0345001';
             update.mintrans = update.mintrans || '390 ОТ 28.09.2022';
+            update.monthlyPrice = parseFloat(update.monthlyPrice) || 0;
+            update.crmStatus = update.crmStatus || 'active';
             update.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
             update.updatedBy = Auth.currentUser.uid;
             await db.collection('drivers').doc(driverId).update(update);
@@ -192,17 +205,27 @@ const Drivers = {
             .replace(/'/g, '&#39;');
     },
 
-    async loadDrivers() {
-        try {
-            const snapshot = await db.collection('drivers').orderBy('fullName').get();
-            Drivers.drivers = [];
-            snapshot.forEach(doc => {
-                Drivers.drivers.push({ id: doc.id, ...doc.data() });
+    // Живая подписка на коллекцию водителей: данные появляются мгновенно и
+    // обновляются в реальном времени (без перезагрузки страницы и задержек).
+    // Подписка ставится один раз; повторные вызовы (после добавления/удаления) — no-op.
+    loadDrivers() {
+        if (Drivers._unsub) return;
+        Drivers._unsub = db.collection('drivers').orderBy('fullName')
+            .onSnapshot(snapshot => {
+                Drivers.drivers = [];
+                snapshot.forEach(doc => {
+                    Drivers.drivers.push({ id: doc.id, ...doc.data() });
+                });
+                Drivers.renderList();
+                if (typeof updateDashboard === 'function') updateDashboard();
+            }, error => {
+                console.error('Drivers onSnapshot error:', error);
             });
-            Drivers.renderList();
-        } catch (error) {
-            console.error('Error loading drivers:', error);
-        }
+    },
+
+    // Отписка от realtime (при выходе из аккаунта).
+    stopRealtime() {
+        if (Drivers._unsub) { Drivers._unsub(); Drivers._unsub = null; }
     },
 
     // Нормализация строки для поиска: нижний регистр, ё→е, схлопывание пробелов
@@ -263,22 +286,32 @@ const Drivers = {
         if (clearEl) clearEl.style.display = query ? 'flex' : 'none';
     },
 
+    _crmBadge(driver) {
+        const st = Drivers.CRM_STATUSES[driver.crmStatus] || Drivers.CRM_STATUSES.active;
+        return `<span class="status-badge ${st.cls}">${st.label}</span>`;
+    },
+
     renderRow(driver) {
         const e = Drivers._esc;
         const status = driver.active !== false ?
             '<span class="status-badge status-active">Активен</span>' :
             '<span class="status-badge status-inactive">Неактивен</span>';
+        const price = (typeof driver.monthlyPrice === 'number' ? driver.monthlyPrice : parseFloat(driver.monthlyPrice) || 0);
+        const priceStr = price ? price.toLocaleString('ru-RU') + ' ₽/мес' : '';
 
         const id = e(driver.id);
         return `
             <tr>
-                <td data-label="Водитель"><strong>${e(driver.fullName)}</strong></td>
+                <td data-label="Водитель"><strong>${e(driver.fullName)}</strong>${priceStr ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">${priceStr}</div>` : ''}</td>
                 <td data-label="Телефон">${e(driver.phone)}</td>
                 <td data-label="Авто">${e(driver.carModel)}</td>
                 <td data-label="Гос. номер">${e(driver.plateNumber)}</td>
                 <td data-label="Организация">${e(driver.orgName) || '—'}</td>
-                <td data-label="Статус">${status}</td>
+                <td data-label="Статус">${status}<div style="margin-top:4px;">${Drivers._crmBadge(driver)}</div></td>
                 <td data-label="Действия">
+                    <button class="btn btn-sm btn-outline" onclick="Drivers.openCrm('${id}')" title="CRM: статус и заметки">
+                        <i class="fas fa-user-tag"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline" onclick="Drivers.editDriver('${id}')" title="Редактировать">
                         <i class="fas fa-pen"></i>
                     </button>
@@ -294,6 +327,109 @@ const Drivers = {
                 </td>
             </tr>
         `;
+    },
+
+    // ===== CRM: модалка со статусом и заметками по водителю =====
+    _crmUnsub: null,
+
+    openCrm(driverId) {
+        const driver = Drivers.drivers.find(d => d.id === driverId);
+        if (!driver) { showToast('Водитель не найден', 'error'); return; }
+        const e = Drivers._esc;
+
+        const statusOptions = Object.entries(Drivers.CRM_STATUSES).map(([key, v]) =>
+            `<option value="${key}" ${ (driver.crmStatus || 'active') === key ? 'selected' : ''}>${v.label}</option>`
+        ).join('');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'crm-modal-overlay';
+        overlay.id = 'crm-modal-overlay';
+        overlay.innerHTML = `
+            <div class="crm-modal">
+                <div class="crm-modal-header">
+                    <div>
+                        <h3>${e(driver.fullName)}</h3>
+                        <p>${e(driver.phone) || ''}</p>
+                    </div>
+                    <button class="crm-modal-close" onclick="Drivers.closeCrm()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="crm-modal-body">
+                    <label class="crm-label">Статус (CRM)</label>
+                    <div class="crm-status-row">
+                        <select id="crm-status-select">${statusOptions}</select>
+                        <button class="btn btn-sm btn-primary" onclick="Drivers.saveCrmStatus('${e(driverId)}')">Сохранить</button>
+                    </div>
+
+                    <label class="crm-label" style="margin-top:18px;">Заметки</label>
+                    <div class="crm-notes" id="crm-notes"><div style="color:var(--text-light);padding:8px;">Загрузка…</div></div>
+                    <form class="crm-note-add" id="crm-note-form" autocomplete="off">
+                        <input type="text" id="crm-note-input" placeholder="Добавить заметку…" autocomplete="off">
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i></button>
+                    </form>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (ev) => { if (ev.target === overlay) Drivers.closeCrm(); });
+
+        document.getElementById('crm-note-form').addEventListener('submit', (ev) => {
+            ev.preventDefault();
+            Drivers.addNote(driverId);
+        });
+
+        // Realtime-подписка на заметки.
+        Drivers._crmUnsub = db.collection('drivers').doc(driverId)
+            .collection('notes').orderBy('createdAt', 'desc')
+            .onSnapshot(snap => {
+                const box = document.getElementById('crm-notes');
+                if (!box) return;
+                if (snap.empty) { box.innerHTML = '<div style="color:var(--text-light);padding:8px;">Заметок пока нет</div>'; return; }
+                box.innerHTML = snap.docs.map(d => {
+                    const n = d.data() || {};
+                    const t = n.createdAt && n.createdAt.seconds
+                        ? new Date(n.createdAt.seconds * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : '';
+                    return `<div class="crm-note"><div class="crm-note-text">${e(n.text)}</div><div class="crm-note-time">${t}</div></div>`;
+                }).join('');
+            }, err => console.error('CRM notes onSnapshot error:', err));
+    },
+
+    closeCrm() {
+        if (Drivers._crmUnsub) { Drivers._crmUnsub(); Drivers._crmUnsub = null; }
+        const ov = document.getElementById('crm-modal-overlay');
+        if (ov) ov.remove();
+    },
+
+    async saveCrmStatus(driverId) {
+        const sel = document.getElementById('crm-status-select');
+        if (!sel) return;
+        try {
+            await db.collection('drivers').doc(driverId).update({
+                crmStatus: sel.value,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            showToast('Статус обновлён', 'success');
+        } catch (e) {
+            console.error('Save CRM status error:', e);
+            showToast('Ошибка: ' + (e.message || e.code), 'error');
+        }
+    },
+
+    async addNote(driverId) {
+        const input = document.getElementById('crm-note-input');
+        const text = (input.value || '').trim();
+        if (!text) return;
+        input.value = '';
+        try {
+            await db.collection('drivers').doc(driverId).collection('notes').add({
+                text,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdBy: Auth.currentUser ? Auth.currentUser.uid : null
+            });
+        } catch (e) {
+            console.error('Add note error:', e);
+            showToast('Ошибка добавления заметки: ' + (e.message || e.code), 'error');
+            input.value = text;
+        }
     },
 
     async addDriver() {
@@ -323,6 +459,8 @@ const Drivers = {
         const okpo = document.getElementById('driver-okpo').value.trim();
         const permit = document.getElementById('driver-permit').value.trim();
         const mintrans = document.getElementById('driver-mintrans').value.trim();
+        const monthlyPrice = parseFloat(document.getElementById('driver-monthly-price').value) || 0;
+        const crmStatus = document.getElementById('driver-crm-status').value || 'active';
 
         const phone = Drivers._normalizePhone(phoneRaw);
         const password = passwordRaw || Drivers._defaultPassword(phone);
@@ -380,6 +518,8 @@ const Drivers = {
                 okpo,
                 permit,
                 mintrans: mintrans || '390 ОТ 28.09.2022',
+                monthlyPrice,
+                crmStatus,
                 active: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy: Auth.currentUser.uid
