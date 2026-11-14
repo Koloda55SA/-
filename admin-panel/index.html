@@ -10,7 +10,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://firestore.googleapis.com">
+    <link rel="preconnect" href="https://asem-pro-api.oon66517.workers.dev">
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -596,34 +596,6 @@
                 </div>
             </section>
 
-            <!-- ===== ЗАЯВКИ НА ЭПЛ ===== -->
-            <section id="section-requests" class="section">
-                <div class="section-header">
-                    <div>
-                        <h3>Заявки на доп. ЭПЛ</h3>
-                        <p class="section-subtitle">Запросы водителей на дополнительные путевые листы (+60)</p>
-                    </div>
-                    <button class="btn btn-primary" onclick="Requests.load()">
-                        <i class="fas fa-rotate"></i> Обновить
-                    </button>
-                </div>
-                <div class="table-container">
-                    <table id="requests-table">
-                        <thead>
-                            <tr>
-                                <th>Водитель</th>
-                                <th>Телефон</th>
-                                <th>Организация</th>
-                                <th>Текущий лимит</th>
-                                <th>Статус</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody id="requests-tbody"></tbody>
-                    </table>
-                </div>
-            </section>
-
             <!-- ===== ТЕХПОДДЕРЖКА (ЧАТ) ===== -->
             <section id="section-support" class="section">
                 <div class="section-header">
@@ -761,15 +733,11 @@
         </main>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/drivers.js"></script>
     <script src="js/waybills.js"></script>
-    <script src="js/requests.js"></script>
     <script src="js/support.js"></script>
     <script src="js/accounting.js"></script>
     <script src="js/checks.js"></script>

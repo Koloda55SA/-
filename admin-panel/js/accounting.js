@@ -1,22 +1,12 @@
 // Бухгалтерия — ежемесячная оплата водителей (₽), отметка вручную.
-// Модель: payments/{driverId}_{YYYY-MM} = { driverId, driverName, period, amount, paid, paidAt, markedBy }
-// Тариф водителя — поле monthlyPrice в документе drivers/{id}.
-// Итоги (ожидается / собрано / долг) считаются по активным водителям.
+// Тариф водителя — monthlyPrice в профиле. Итоги считаются по активным водителям.
 const Accounting = {
-    _unsub: null,
     _period: null,        // 'YYYY-MM'
-    _payments: {},        // driverId -> payment data за выбранный период
+    _payments: {},        // driverId -> { paid, amount }
 
     init() {
-        // период по умолчанию — текущий месяц
         const now = new Date();
         Accounting._period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    },
-
-    _esc(value) {
-        const s = value == null ? '' : String(value);
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
     _fmt(n) {
@@ -32,17 +22,15 @@ const Accounting = {
         if (!Accounting._period) Accounting.init();
         const input = document.getElementById('accounting-month-input');
         if (input && !input.value) input.value = Accounting._period;
-        Accounting._subscribe();
+        Accounting._fetch();
     },
 
-    stopRealtime() {
-        if (Accounting._unsub) { Accounting._unsub(); Accounting._unsub = null; }
-    },
+    stopRealtime() { Accounting._payments = {}; },
 
     setMonth(value) {
         if (!value) return;
         Accounting._period = value;
-        Accounting._subscribe();
+        Accounting._fetch();
     },
 
     _shiftMonth(delta) {
@@ -51,40 +39,33 @@ const Accounting = {
         Accounting._period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         const input = document.getElementById('accounting-month-input');
         if (input) input.value = Accounting._period;
-        Accounting._subscribe();
+        Accounting._fetch();
     },
     prevMonth() { Accounting._shiftMonth(-1); },
     nextMonth() { Accounting._shiftMonth(1); },
 
-    // Подписка на платежи выбранного периода (realtime).
-    _subscribe() {
-        if (Accounting._unsub) { Accounting._unsub(); Accounting._unsub = null; }
-        Accounting._unsub = db.collection('payments')
-            .where('period', '==', Accounting._period)
-            .onSnapshot(snap => {
-                Accounting._payments = {};
-                snap.forEach(doc => {
-                    const p = doc.data() || {};
-                    if (p.driverId) Accounting._payments[p.driverId] = p;
-                });
-                Accounting.render();
-            }, err => {
-                console.error('Accounting onSnapshot error:', err);
-            });
+    async _fetch() {
+        const period = Accounting._period;
+        try {
+            const r = await Api.get('/api/admin/payments?period=' + encodeURIComponent(period));
+            if (period !== Accounting._period) return;
+            Accounting._payments = {};
+            (r.items || []).forEach(p => { Accounting._payments[p.driverId] = p; });
+            Accounting.render();
+        } catch (e) {
+            showToast('Ошибка загрузки оплат: ' + e.message, 'error');
+        }
     },
 
     render() {
         const tbody = document.getElementById('accounting-tbody');
         if (!tbody) return;
-        const e = Accounting._esc;
-        // Источник водителей — живой кэш Drivers (realtime). Активные = active !== false.
-        const drivers = (typeof Drivers !== 'undefined' ? Drivers.drivers : [])
-            .filter(d => d.active !== false);
-
+        const e = escHtml;
+        const drivers = (typeof Drivers !== 'undefined' ? Drivers.drivers : []).filter(d => d.active !== false);
         let expected = 0, collected = 0, unpaid = 0;
 
         if (drivers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light);padding:32px;">Нет активных водителей</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Нет активных водителей</td></tr>';
         } else {
             tbody.innerHTML = drivers.map(d => {
                 const price = Accounting._price(d);
@@ -93,14 +74,12 @@ const Accounting = {
                 const paid = pay && pay.paid === true;
                 if (paid) collected += (typeof pay.amount === 'number' ? pay.amount : price);
                 else unpaid++;
-
                 const statusBadge = paid
                     ? '<span class="status-badge status-active">Оплачено</span>'
                     : '<span class="status-badge status-inactive">Не оплачено</span>';
                 const btn = paid
                     ? `<button class="btn btn-sm btn-outline" onclick="Accounting.toggle('${e(d.id)}', false)"><i class="fas fa-rotate-left"></i> Снять отметку</button>`
                     : `<button class="btn btn-sm btn-primary" onclick="Accounting.toggle('${e(d.id)}', true)"><i class="fas fa-check"></i> Отметить оплату</button>`;
-
                 return `
                     <tr>
                         <td data-label="Водитель"><strong>${e(d.fullName)}</strong></td>
@@ -120,25 +99,12 @@ const Accounting = {
     },
 
     async toggle(driverId, paid) {
-        const driver = (typeof Drivers !== 'undefined' ? Drivers.drivers : []).find(d => d.id === driverId);
-        if (!driver) { showToast('Водитель не найден', 'error'); return; }
-        const price = Accounting._price(driver);
-        const docId = `${driverId}_${Accounting._period}`;
         try {
-            await db.collection('payments').doc(docId).set({
-                driverId,
-                driverName: driver.fullName || '',
-                period: Accounting._period,
-                amount: price,
-                paid: !!paid,
-                paidAt: paid ? firebase.firestore.FieldValue.serverTimestamp() : null,
-                markedBy: Auth.currentUser ? Auth.currentUser.uid : null,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            await Api.put('/api/admin/payments', { driverId, period: Accounting._period, paid: !!paid });
             showToast(paid ? 'Оплата отмечена' : 'Отметка снята', 'success');
+            await Accounting._fetch();
         } catch (e) {
-            console.error('Payment toggle error:', e);
-            showToast('Ошибка: ' + (e.message || e.code), 'error');
+            showToast('Ошибка: ' + e.message, 'error');
         }
     }
 };

@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/api.dart';
 import '../theme/app_theme.dart';
 import 'waybill_screen.dart';
 import 'waybill_qr_screen.dart';
@@ -31,9 +29,18 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      _DashboardPage(driverData: widget.driverData, driverDocId: widget.driverDocId),
+      _DashboardPage(
+        driverData: widget.driverData,
+        driverDocId: widget.driverDocId,
+        active: _currentIndex == 0,
+      ),
       ProfileScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
-      TechSupportScreen(driverData: widget.driverData, driverDocId: widget.driverDocId),
+      // Чат опрашивает сервер только пока его вкладка открыта.
+      TechSupportScreen(
+        driverData: widget.driverData,
+        driverDocId: widget.driverDocId,
+        active: _currentIndex == 2,
+      ),
       SettingsScreen(driverData: widget.driverData),
     ];
 
@@ -61,8 +68,10 @@ class _HomeScreenState extends State<HomeScreen> {
 class _DashboardPage extends StatefulWidget {
   final Map<String, dynamic> driverData;
   final String driverDocId;
+  /// Вкладка открыта — тогда опрашиваем сервер.
+  final bool active;
 
-  const _DashboardPage({required this.driverData, required this.driverDocId});
+  const _DashboardPage({required this.driverData, required this.driverDocId, this.active = true});
 
   @override
   State<_DashboardPage> createState() => _DashboardPageState();
@@ -74,79 +83,68 @@ class _DashboardPageState extends State<_DashboardPage> {
   bool _loadingActive = true;
   /// Сколько ЭПЛ выпущено (только для статистики — лимита больше нет).
   int _issuedCount = 0;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _activeSub;
+
+  /// Текущий лист водителя: запрос на допуск (pending) или выпущенный (active).
+  /// Пока ждём допуска — опрашиваем часто, чтобы отметки медика и мастера
+  /// появлялись почти сразу.
+  late final Poller _poller = Poller(_loadCurrent, const Duration(seconds: 30));
 
   @override
   void initState() {
     super.initState();
-    _listenActive();
+    if (widget.active) _poller.start();
     _loadQuota();
   }
 
   @override
+  void didUpdateWidget(covariant _DashboardPage old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _poller.start();
+    } else if (!widget.active && old.active) {
+      _poller.stop();
+    }
+  }
+
+  @override
   void dispose() {
-    _activeSub?.cancel();
+    _poller.stop();
     super.dispose();
   }
 
   /// Лист с истёкшим сроком (12 ч) больше не считается действующим.
   static bool _isExpired(Map<String, dynamic>? w) {
     if (w == null || w['status'] != 'active') return false;
-    final exp = w['expiresAt'];
-    return exp is Timestamp && exp.toDate().isBefore(DateTime.now());
+    final exp = apiTime(w['expiresAt']);
+    return exp != null && exp.isBefore(DateTime.now());
   }
 
-  static int _createdMs(DocumentSnapshot<Map<String, dynamic>> d) {
-    final t = d.data()?['createdAt'];
-    // Только что созданный (ещё не подтверждён сервером) — самый новый.
-    return t is Timestamp ? t.millisecondsSinceEpoch : DateTime.now().millisecondsSinceEpoch + 1;
-  }
-
-  /// Живая подписка на текущий лист водителя: запрос на допуск (pending)
-  /// или выпущенный лист (active). Отметки медика и мастера видны сразу.
-  void _listenActive() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _loadingActive = false;
-      return;
-    }
-    _activeSub = FirebaseFirestore.instance
-        .collection('waybills')
-        .where('authUid', isEqualTo: user.uid)
-        .where('status', whereIn: ['pending', 'active'])
-        .limit(20)
-        .snapshots()
-        .listen((snap) {
-      QueryDocumentSnapshot<Map<String, dynamic>>? best;
-      for (final d in snap.docs) {
-        if (_isExpired(d.data())) continue;
-        if (best == null || _createdMs(d) > _createdMs(best)) best = d;
-      }
+  Future<void> _loadCurrent() async {
+    try {
+      final r = await Api.get('/api/driver/waybills/current');
+      final w = r['waybill'];
+      final current = w is Map<String, dynamic> && !_isExpired(w) ? w : null;
+      _poller.interval = Duration(seconds: current?['status'] == 'pending' ? 5 : 30);
       if (!mounted) return;
       setState(() {
-        _activeWaybill = best?.data();
-        _activeWaybillId = best?.id;
+        _activeWaybill = current;
+        _activeWaybillId = current?['id']?.toString();
         _loadingActive = false;
       });
-    }, onError: (e) {
-      debugPrint('Active waybill listen error: $e');
-      if (mounted) setState(() => _loadingActive = false);
-    });
+    } on ApiException catch (e) {
+      debugPrint('Current waybill load error: $e');
+      if (mounted && _loadingActive) setState(() => _loadingActive = false);
+    }
   }
 
   Future<void> _loadQuota() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final counter = await FirebaseFirestore.instance
-          .collection('driverCounters')
-          .doc(user.uid)
-          .get();
-      final c = counter.data()?['count'];
+      final r = await Api.get('/api/driver/stats');
+      final c = r['issued'];
       if (!mounted) return;
       setState(() => _issuedCount = c is num ? c.toInt() : 0);
     } catch (e) {
-      debugPrint('Counter load error: $e');
+      debugPrint('Stats load error: $e');
     }
   }
 
@@ -162,6 +160,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         ),
       ),
     );
+    await _poller.refresh();
     await _loadQuota();
   }
 
@@ -178,15 +177,15 @@ class _DashboardPageState extends State<_DashboardPage> {
         ),
       ),
     );
+    await _poller.refresh();
+    await _loadQuota();
   }
 
   Future<void> _closeWaybill() async {
-    if (_activeWaybillId == null) return;
+    final id = _activeWaybillId;
+    if (id == null) return;
     try {
-      await FirebaseFirestore.instance
-          .collection('waybills')
-          .doc(_activeWaybillId)
-          .update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+      await Api.post('/api/driver/waybills/${Uri.encodeComponent(id)}/close');
       if (mounted) {
         setState(() {
           _activeWaybill = null;
@@ -205,6 +204,7 @@ class _DashboardPageState extends State<_DashboardPage> {
           SnackBar(content: Text('Ошибка: $e'), backgroundColor: AppTheme.danger),
         );
       }
+      await _poller.refresh();
     }
   }
 
@@ -218,8 +218,7 @@ class _DashboardPageState extends State<_DashboardPage> {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
-          await _loadQuota();
-          if (mounted) setState(() {}); // перепроверить срок действия листа
+          await Future.wait([_poller.refresh(), _loadQuota()]);
         },
         color: AppTheme.primary,
         child: ListView(
@@ -476,10 +475,7 @@ class _ActiveWaybillCard extends StatelessWidget {
   });
 
   String _formatExpires(dynamic v) {
-    if (v == null) return '—';
-    DateTime? dt;
-    if (v is Timestamp) dt = v.toDate();
-    if (v is DateTime) dt = v;
+    final dt = v is DateTime ? v : apiTime(v);
     if (dt == null) return '—';
     final msk = dt.toUtc().add(const Duration(hours: 3));
     String two(int x) => x.toString().padLeft(2, '0');

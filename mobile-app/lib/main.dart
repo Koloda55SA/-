@@ -1,20 +1,13 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-import 'firebase_options.dart';
+import 'services/session.dart';
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
   // Edge-to-edge, тёмный статус-бар на оранжево-чёрной палитре.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -24,6 +17,8 @@ void main() async {
     systemNavigationBarColor: AppTheme.bg,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
+  // Вход восстанавливается из сохранённого токена; пока идёт — заставка.
+  Session.instance.restore();
   runApp(const AsemProApp());
 }
 
@@ -39,21 +34,27 @@ class AsemProApp extends StatefulWidget {
 }
 
 class _AsemProAppState extends State<AsemProApp> {
-  StreamSubscription<User?>? _authSub;
+  AuthStatus _last = Session.instance.status;
 
   @override
   void initState() {
     super.initState();
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user == null) {
-        rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-      }
-    });
+    Session.instance.addListener(_onSession);
+  }
+
+  // Вышел, удалил аккаунт или отключён — закрываем все экраны поверх главного
+  // (в т.ч. создание ЭПЛ).
+  void _onSession() {
+    final s = Session.instance.status;
+    if (s != _last && s != AuthStatus.signedIn) {
+      rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    }
+    _last = s;
   }
 
   @override
   void dispose() {
-    _authSub?.cancel();
+    Session.instance.removeListener(_onSession);
     super.dispose();
   }
 
@@ -70,74 +71,31 @@ class _AsemProAppState extends State<AsemProApp> {
 }
 
 /// Маршрутизирует пользователя между login → home → "аккаунт заблокирован"
-/// в зависимости от состояния Firebase Auth и поля `active` в профиле водителя.
+/// в зависимости от сессии и поля `active` в профиле водителя.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnap) {
-        if (authSnap.connectionState == ConnectionState.waiting) {
-          return const _SplashScreen();
+    final session = Session.instance;
+    return ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        switch (session.status) {
+          case AuthStatus.loading:
+            return const _SplashScreen();
+          case AuthStatus.signedOut:
+            return const LoginScreen();
+          case AuthStatus.blocked:
+            return const _BlockedScreen();
+          case AuthStatus.missing:
+            return const _ProfileMissingScreen();
+          case AuthStatus.signedIn:
+            return HomeScreen(
+              driverData: session.driver ?? const {},
+              driverDocId: session.userId,
+            );
         }
-        final user = authSnap.data;
-        if (user == null) return const LoginScreen();
-
-        // Подписываемся на документ водителя — если админ деактивирует, мгновенно разлогиниваем.
-        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('drivers')
-              .doc(user.uid)
-              .snapshots(),
-          builder: (context, driverSnap) {
-            if (driverSnap.connectionState == ConnectionState.waiting) {
-              return const _SplashScreen();
-            }
-            final data = driverSnap.data?.data();
-            // Если профиль не найден — может быть старая запись по authUid, попробуем найти.
-            if (data == null) {
-              return _DriverProfileFallback(uid: user.uid);
-            }
-            final active = data['active'];
-            if (active == false) {
-              // Деактивирован — убираем открытые поверх экраны (в т.ч. создание ЭПЛ).
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-              });
-              return const _BlockedScreen();
-            }
-            return HomeScreen(driverData: data, driverDocId: user.uid);
-          },
-        );
-      },
-    );
-  }
-}
-
-/// Падает на «бесшовный» fallback: ищем driver по полю authUid (для старых записей).
-class _DriverProfileFallback extends StatelessWidget {
-  final String uid;
-  const _DriverProfileFallback({required this.uid});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance
-          .collection('drivers')
-          .where('authUid', isEqualTo: uid)
-          .limit(1)
-          .get(),
-      builder: (context, snap) {
-        // Ошибка (нет прав / нет сети) — не держим вечный сплэш без выхода.
-        if (snap.hasError) return const _ProfileMissingScreen();
-        if (!snap.hasData) return const _SplashScreen();
-        if (snap.data!.docs.isEmpty) return const _ProfileMissingScreen();
-        final doc = snap.data!.docs.first;
-        final data = doc.data();
-        if (data['active'] == false) return const _BlockedScreen();
-        return HomeScreen(driverData: data, driverDocId: doc.id);
       },
     );
   }
@@ -242,7 +200,7 @@ class _BlockedScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  onPressed: () => Session.instance.signOut(),
                   icon: const Icon(Icons.logout),
                   label: const Text('Выйти'),
                 ),
@@ -282,7 +240,7 @@ class _ProfileMissingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               OutlinedButton.icon(
-                onPressed: () => FirebaseAuth.instance.signOut(),
+                onPressed: () => Session.instance.signOut(),
                 icon: const Icon(Icons.logout),
                 label: const Text('Выйти'),
               ),

@@ -20,7 +20,6 @@ function showSection(sectionName) {
         'drivers': 'Водители',
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
-        'requests': 'Заявки',
         'support': 'Техподдержка',
         'accounting': 'Бухгалтерия',
         'settings': 'Настройки'
@@ -38,14 +37,28 @@ function showSection(sectionName) {
         updateDashboard();
     }
 
-    // Подгружаем заявки на дополнительные ЭПЛ
-    if (sectionName === 'requests' && typeof Requests !== 'undefined') {
-        Requests.load();
+    if (sectionName === 'drivers' && typeof Drivers !== 'undefined') {
+        Drivers.loadDrivers();
     }
 
-    // Техподдержка — список чатов с водителями
-    if (sectionName === 'support' && typeof Support !== 'undefined') {
-        Support.load();
+    if (sectionName === 'waybills' && typeof Waybills !== 'undefined') {
+        Waybills.refresh();
+    }
+
+    // Техподдержка — список чатов. Ушли из раздела — открытый диалог больше
+    // не опрашиваем (иначе новые сообщения помечались бы прочитанными).
+    if (typeof Support !== 'undefined') {
+        if (sectionName === 'support') {
+            Support.load();
+        } else if (Support._chatStop) {
+            Support._chatStop();
+            Support._chatStop = null;
+            Support._activeId = null;
+            const ph = document.getElementById('support-chat-placeholder');
+            const act = document.getElementById('support-chat-active');
+            if (ph) ph.style.display = '';
+            if (act) act.style.display = 'none';
+        }
     }
 
     // Бухгалтерия — таблица оплат за выбранный месяц
@@ -123,11 +136,8 @@ function initTheme() {
     updateThemeUI(saved);
 }
 
-// Обновление статистики на «Меню». Вызывается из realtime-подписок водителей
-// и путевых листов, поэтому:
-//   - считаем только когда «Меню» открыто (иначе — при следующем заходе);
-//   - схлопываем частые вызовы в один (debounce), чтобы не долбить сервер
-//     агрегатами count() на каждое изменение.
+// Обновление статистики на «Меню»: только когда «Меню» открыто,
+// частые вызовы схлопываются в один запрос.
 let _dashboardTimer = null;
 function updateDashboard() {
     const menu = document.getElementById('section-menu');
@@ -137,38 +147,14 @@ function updateDashboard() {
     _dashboardTimer = setTimeout(_updateDashboardNow, 400);
 }
 
-// Водителей считаем из живого кэша (Drivers.drivers держится в реальном
-// времени), путевые листы — дешёвым серверным агрегатом count().
 async function _updateDashboardNow() {
     try {
-        const today = new Date().toLocaleDateString('ru-RU');
+        const s = await Api.get('/api/admin/dashboard');
         const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-
-        // Водители — из realtime-кэша, если он уже наполнен.
-        if (typeof Drivers !== 'undefined' && Drivers._unsub) {
-            setStat('stat-drivers', Drivers.drivers.length);
-            setStat('stat-active', Drivers.drivers.filter(d => d.active !== false).length);
-        } else {
-            const driversSnap = await db.collection('drivers').get();
-            let activeCount = 0;
-            driversSnap.forEach(doc => { if (doc.data().active !== false) activeCount++; });
-            setStat('stat-drivers', driversSnap.size);
-            setStat('stat-active', activeCount);
-        }
-
-        // Путевые листы — серверный агрегат (1 чтение вместо всей коллекции).
-        try {
-            const totalAgg = await db.collection('waybills').count().get();
-            setStat('stat-waybills', totalAgg.data().count);
-            const todayAgg = await db.collection('waybills').where('date', '==', today).count().get();
-            setStat('stat-today', todayAgg.data().count);
-        } catch (_) {
-            // Если агрегаты недоступны — считаем из загруженных (до 50) листов.
-            if (typeof Waybills !== 'undefined') {
-                setStat('stat-waybills', Waybills.waybills.length);
-                setStat('stat-today', Waybills.waybills.filter(w => w.date === today).length);
-            }
-        }
+        setStat('stat-drivers', s.drivers);
+        setStat('stat-active', s.activeDrivers);
+        setStat('stat-waybills', s.waybills);
+        setStat('stat-today', s.today);
     } catch (e) {
         console.error('Dashboard update error:', e);
     }
@@ -176,12 +162,13 @@ async function _updateDashboardNow() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    Auth.init();
     Drivers.init();
     Settings.init();
     if (typeof Support !== 'undefined') Support.init();
     if (typeof Accounting !== 'undefined') Accounting.init();
     if (typeof Staff !== 'undefined') Staff.init();
+    // Вход — последним: после него сразу грузятся данные во все модули.
+    Auth.init();
 
     document.querySelectorAll('.sidebar-menu li').forEach(item => {
         item.addEventListener('click', () => {

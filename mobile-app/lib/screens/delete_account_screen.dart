@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+import '../services/api.dart';
+import '../services/session.dart';
 import '../theme/app_theme.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
@@ -16,8 +15,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   final _passwordController = TextEditingController();
 
   Future<void> _deleteAccount() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (Session.instance.status != AuthStatus.signedIn) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -27,7 +25,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Это действие необратимо. Все ваши данные и путевые листы будут удалены.',
+              'Это действие необратимо. Вход будет отключён сразу, профиль удалит администратор.',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -59,54 +57,21 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     setState(() => _isDeleting = true);
 
     try {
-      // Re-authenticate user before deletion
-      final email = user.email;
-      if (email == null || email.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Email пользователя не найден'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        setState(() => _isDeleting = false);
-        return;
-      }
-      final credential = EmailAuthProvider.credential(
-        email: email,
-        password: _passwordController.text,
-      );
-      await user.reauthenticateWithCredential(credential);
-
-      // Заявка на удаление данных: путевые листы и профиль водителя удаляет
-      // администратор (водителю правила это запрещают — раньше из-за этого
-      // удаление аккаунта всегда падало с permission-denied).
-      await FirebaseFirestore.instance.collection('deletionRequests').add({
-        'uid': user.uid,
-        'email': user.email,
-        'requestedAt': FieldValue.serverTimestamp(),
-        'status': 'pending',
-      });
-
-      // Delete Firebase Auth account
-      await user.delete();
+      // Сервер проверяет пароль, сразу отключает вход и создаёт заявку:
+      // профиль и данные удаляет администратор.
+      await Api.post('/api/driver/delete-account', {'password': _passwordController.text});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Аккаунт успешно удалён'),
+            content: Text('Аккаунт удалён. Данные удалит администратор'),
             backgroundColor: Colors.green,
           ),
         );
       }
-    } on FirebaseAuthException catch (e) {
-      String msg = 'Ошибка удаления';
-      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        msg = 'Неверный пароль';
-      } else if (e.code == 'requires-recent-login') {
-        msg = 'Войдите заново и повторите попытку';
-      }
+      await Session.instance.forget();
+    } on ApiException catch (e) {
+      final msg = e.code == 'invalid-credentials' ? 'Неверный пароль' : 'Ошибка удаления: ${e.message}';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
@@ -148,8 +113,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             ),
             const SizedBox(height: 12),
             _bulletPoint('Ваш профиль водителя'),
-            _bulletPoint('Все ваши путевые листы'),
-            _bulletPoint('Данные авторизации'),
+            _bulletPoint('Данные для входа'),
+            _bulletPoint('Переписка с техподдержкой'),
+            const SizedBox(height: 12),
+            const Text(
+              'Выданные путевые листы хранятся столько, сколько требует закон.',
+              style: TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 24),
             const Text(
               'Это действие необратимо. Если вы хотите продолжить, нажмите кнопку ниже.',

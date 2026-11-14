@@ -1,176 +1,124 @@
-// Authentication Module — Phone + Password (БЕЗ SMS)
-//
-// Админ входит по номеру телефона и паролю, который он сам себе задал
-// в Firebase Console. Под капотом, как и у водителей, используется
-// Firebase Email Auth с синтетическим email:
-//
-//     <digits>@asempro.admin       (например, 79153955383@asempro.admin)
-//
-// Чтобы создать первого администратора:
-//   1. Firebase Console → Authentication → Users → Add user
-//      Email:    <digits>@asempro.admin   (цифры номера без + и пробелов)
-//      Password: любой ≥ 6 символов
-//   2. Скопируйте UID созданного пользователя
-//   3. Firestore → admins → создайте документ с ID = этот UID:
-//      {
-//        phone:     "+7...",
-//        role:      "admin",
-//        createdAt: <timestamp>
-//      }
-//
-// После этого администратор входит по своему номеру + паролю.
+// Вход на сайт по телефону и паролю (сервер AsemPro API на Cloudflare).
+// Роли: 'admin' — владелец/администратор; 'medic' и 'mechanic' — видят только «Допуск».
+// Первого администратора создаёт POST /api/bootstrap (см. cloudflare-api/README.md),
+// остальных сотрудников — администратор в разделе «Сотрудники».
 const Auth = {
-    currentUser: null,
-    // Роль из admins/{uid}.role: 'admin' (по умолчанию) | 'medic' | 'mechanic'.
+    currentUser: null,   // { id, role, phone, fullName, certSerial, ... }
     role: 'admin',
-    // Профиль сотрудника (ФИО и данные сертификата — для отметки допуска).
     profile: {},
-    _bootDone: false,
+    CACHE_KEY: 'asempro_admin',
 
     ROLE_LABELS: { admin: 'Администратор', medic: 'Медик', mechanic: 'Мастер' },
 
     isAdmin() { return Auth.role === 'admin'; },
 
-    // Показывает только разрешённые роли разделы меню.
     _applyRoleUI(role) {
         document.body.dataset.role = role;
     },
 
+    _cache(value) {
+        try {
+            if (value) localStorage.setItem(Auth.CACHE_KEY, JSON.stringify(value));
+            else localStorage.removeItem(Auth.CACHE_KEY);
+        } catch (_) {}
+    },
+
     init() {
-        const cachedAdmin = localStorage.getItem('asempro_admin');
-        if (cachedAdmin) {
-            try {
-                const cached = JSON.parse(cachedAdmin);
-                if (cached && cached.phone) {
-                    Auth.role = cached.role || 'admin';
-                    Auth._applyRoleUI(Auth.role);
-                    Auth._showDashboardShell(cached.phone);
-                }
-            } catch (_) {}
-        }
-
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                try {
-                    const adminDoc = await db.collection('admins').doc(user.uid).get();
-                    if (adminDoc.exists) {
-                        Auth.currentUser = user;
-                        const adminData = adminDoc.data() || {};
-                        Auth.role = Auth.ROLE_LABELS[adminData.role] ? adminData.role : 'admin';
-                        Auth.profile = adminData;
-                        const display = adminData.fullName || adminData.phone || user.email || 'Admin';
-                        localStorage.setItem('asempro_admin', JSON.stringify({
-                            uid: user.uid,
-                            phone: display,
-                            role: Auth.role
-                        }));
-                        Auth.showDashboard();
-                    } else {
-                        localStorage.removeItem('asempro_admin');
-                        await auth.signOut();
-                        Auth.showLogin();
-                        Auth.showError('У вас нет прав администратора');
-                    }
-                } catch (e) {
-                    console.error('Auth check error:', e);
-                    Auth.showLogin();
-                }
-            } else {
-                localStorage.removeItem('asempro_admin');
-                Auth.showLogin();
-            }
-            Auth._bootDone = true;
-        });
-
         document.getElementById('login-form').addEventListener('submit', (e) => {
             e.preventDefault();
             Auth.handleLogin();
         });
+        document.getElementById('logout-btn').addEventListener('click', () => Auth.logout());
 
-        document.getElementById('logout-btn').addEventListener('click', async () => {
-            localStorage.removeItem('asempro_admin');
-            await auth.signOut();
-        });
-
-        // Если за 6 секунд auth не успел инициализироваться — показываем форму
-        setTimeout(() => {
-            if (!Auth._bootDone && !Auth.currentUser) {
-                Auth.showLogin();
+        if (!Api.token) {
+            Auth.showLogin();
+            return;
+        }
+        // Пока проверяем сессию на сервере — сразу показываем оболочку из кэша.
+        try {
+            const cached = JSON.parse(localStorage.getItem(Auth.CACHE_KEY) || 'null');
+            if (cached && cached.display) {
+                Auth.role = cached.role || 'admin';
+                Auth._applyRoleUI(Auth.role);
+                Auth._showDashboardShell(cached.display);
             }
-        }, 6000);
+        } catch (_) {}
+        Auth.restore();
+    },
+
+    async restore() {
+        try {
+            const me = await Api.get('/api/me');
+            Auth._signedIn(me.user);
+        } catch (e) {
+            if (e.code === 'network') {
+                Auth.showLogin();
+                Auth.showError('Нет связи с сервером. Обновите страницу.');
+            }
+            // 401/blocked обрабатывает Api → onSessionLost.
+        }
+    },
+
+    _signedIn(user) {
+        if (!Auth.ROLE_LABELS[user.role]) {
+            Api.setToken(null);
+            Auth.showLogin();
+            Auth.showError('У вас нет доступа к этому сайту');
+            return;
+        }
+        Auth.currentUser = user;
+        Auth.role = user.role;
+        Auth.profile = user;
+        const display = user.fullName || user.phone || 'Admin';
+        Auth._cache({ id: user.id, display, role: user.role });
+        Auth.showDashboard();
     },
 
     // Приводим номер телефона к виду "+79991234567"
     _formatPhone(raw) {
         let phone = String(raw || '').replace(/[\s\(\)\-]/g, '');
-        if (phone.startsWith('8') && phone.length === 11) {
-            phone = '+7' + phone.substring(1);
-        }
+        if (phone.startsWith('8') && phone.length === 11) phone = '+7' + phone.substring(1);
         // 10 цифр без кода страны (9991234567) — российский номер.
         if (/^9\d{9}$/.test(phone)) phone = '+7' + phone;
         if (!phone.startsWith('+')) phone = '+' + phone;
         return phone;
     },
 
-    // "+79991234567" -> "79991234567@asempro.admin"
-    _phoneToAdminEmail(normalizedPhone) {
-        const digits = normalizedPhone.replace(/\D/g, '');
-        return `${digits}@asempro.admin`;
-    },
-
     async handleLogin() {
-        const phoneRaw = document.getElementById('login-phone').value;
+        const phone = Auth._formatPhone(document.getElementById('login-phone').value);
         const password = (document.getElementById('login-password').value || '').trim();
-        const phone = Auth._formatPhone(phoneRaw);
-
-        if (phone.replace(/\D/g, '').length < 10) {
-            Auth.showError('Введите корректный номер телефона');
-            return;
-        }
-        if (password.length < 6) {
-            Auth.showError('Пароль должен быть не короче 6 символов');
-            return;
-        }
+        if (phone.replace(/\D/g, '').length < 10) { Auth.showError('Введите корректный номер телефона'); return; }
+        if (password.length < 6) { Auth.showError('Пароль должен быть не короче 6 символов'); return; }
 
         const btn = document.getElementById('login-btn');
         const originalContent = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
-
         try {
-            const email = Auth._phoneToAdminEmail(phone);
-            await auth.signInWithEmailAndPassword(email, password);
-            // onAuthStateChanged выше проверит /admins/<uid> и переключит на dashboard
-        } catch (error) {
-            console.error('Admin login error:', error);
-            let msg = 'Ошибка входа';
-            switch (error.code) {
-                case 'auth/invalid-credential':
-                case 'auth/wrong-password':
-                case 'auth/user-not-found':
-                    msg = 'Неверный номер или пароль';
-                    break;
-                case 'auth/invalid-email':
-                    msg = 'Некорректный номер телефона';
-                    break;
-                case 'auth/user-disabled':
-                    msg = 'Аккаунт отключён';
-                    break;
-                case 'auth/too-many-requests':
-                    msg = 'Слишком много попыток. Попробуйте позже';
-                    break;
-                case 'auth/network-request-failed':
-                    msg = 'Нет соединения с интернетом';
-                    break;
-                case 'auth/operation-not-allowed':
-                    msg = 'В Firebase Console не включён Email/Password Authentication';
-                    break;
-            }
-            Auth.showError(msg);
+            const r = await Api.post('/api/auth/login', { phone, password, scope: 'staff' });
+            Api.setToken(r.token);
+            document.getElementById('login-password').value = '';
+            Auth._signedIn(r.user);
+        } catch (e) {
+            Auth.showError(e.message || 'Ошибка входа');
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalContent;
         }
+    },
+
+    async logout() {
+        try { await Api.post('/api/auth/logout'); } catch (_) {}
+        Api.setToken(null);
+        Auth._cache(null);
+        Auth.showLogin();
+    },
+
+    // Сервер ответил «не авторизован» / «аккаунт отключён».
+    onSessionLost(err) {
+        Auth._cache(null);
+        Auth.showLogin();
+        Auth.showError(err && err.code === 'blocked' ? 'Аккаунт отключён' : 'Сессия истекла — войдите снова');
     },
 
     _showDashboardShell(display) {
@@ -184,47 +132,32 @@ const Auth = {
     },
 
     showDashboard() {
-        document.getElementById('loading-page').classList.remove('active');
-        document.getElementById('login-page').classList.remove('active');
-        document.getElementById('dashboard-page').classList.add('active');
         Auth._applyRoleUI(Auth.role);
-        // Подпись в шапке/сайдбаре: ФИО или телефон из admins-документа,
-        // иначе email (без @asempro.admin) или просто "Admin".
-        let display = 'Admin';
-        try {
-            const cached = JSON.parse(localStorage.getItem('asempro_admin') || '{}');
-            if (cached && cached.phone) display = cached.phone;
-        } catch (_) {}
-        if (display === 'Admin' && Auth.currentUser?.email) {
-            display = Auth.currentUser.email.split('@')[0];
-        }
+        let display = Auth.currentUser.fullName || Auth.currentUser.phone || 'Admin';
         if (!Auth.isAdmin()) display += ' · ' + Auth.ROLE_LABELS[Auth.role];
-        document.getElementById('admin-email').textContent = display;
-        const sidebarEl = document.getElementById('admin-email-sidebar');
-        if (sidebarEl) sidebarEl.textContent = display;
+        Auth._showDashboardShell(display);
 
         // Очередь на допуск нужна всем ролям (бейдж в меню).
         Checks.load();
         if (!Auth.isAdmin()) {
-            // Медик/мастер видят только раздел «Допуск».
             showSection('checks');
             return;
         }
         Drivers.loadDrivers();
-        Waybills.loadWaybills();
         Settings.loadSettings();
+        if (typeof Support !== 'undefined') Support.load();
         updateDashboard();
     },
 
     showLogin() {
-        // Снимаем все realtime-подписки, чтобы после выхода не сыпались
-        // ошибки прав доступа (permission-denied).
-        [Drivers, Waybills, Requests,
+        // Останавливаем все периодические обновления.
+        [Drivers, Waybills,
          (typeof Support !== 'undefined' ? Support : null),
          (typeof Accounting !== 'undefined' ? Accounting : null),
          (typeof Checks !== 'undefined' ? Checks : null),
          (typeof Staff !== 'undefined' ? Staff : null)]
             .forEach(m => { if (m && typeof m.stopRealtime === 'function') m.stopRealtime(); });
+        Auth.currentUser = null;
         Auth.role = 'admin';
         Auth.profile = {};
         document.getElementById('loading-page').classList.remove('active');
