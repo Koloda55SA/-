@@ -140,6 +140,8 @@ export async function deleteDriver(env, id) {
   if (!res.meta.changes) fail(404, 'not-found', 'Водитель не найден');
   await env.DB.batch([
     env.DB.prepare('DELETE FROM driver_notes WHERE driver_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM support_messages WHERE driver_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM support_chats WHERE driver_id = ?').bind(id),
     env.DB.prepare("UPDATE deletion_requests SET status = 'done' WHERE user_id = ?").bind(id),
   ]);
   return { ok: true };

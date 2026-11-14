@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/session.dart';
 import '../theme/app_theme.dart';
 import 'delete_account_screen.dart';
 
 /// Версия приложения (синхронизирована с pubspec.yaml -> version).
-const String _kAppVersion = '1.3.0+7';
+const String _kAppVersion = '1.4.0+8';
 
 /// Полный экран настроек: уведомления, безопасность, язык, тема, информация
 /// о приложении, удаление аккаунта и выход.
 class SettingsScreen extends StatefulWidget {
   /// Профиль водителя (для отображения номера в карточке "Учётная запись").
-  /// Опционален — экран также работает без него (тогда возьмётся номер из Auth).
+  /// Опционален — экран также работает без него (тогда возьмётся номер из сессии).
   final Map<String, dynamic>? driverData;
 
   const SettingsScreen({super.key, this.driverData});
@@ -52,22 +52,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (v is String) await p.setString(k, v);
   }
 
-  /// Из Auth-email вида "79991234567@asempro.driver" собираем "+79991234567".
-  String _phoneFromAuthEmail(String? email) {
-    if (email == null) return '—';
-    final at = email.indexOf('@');
-    final digits = (at > 0 ? email.substring(0, at) : email).replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return '—';
-    return '+$digits';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final session = Session.instance;
+    final signedIn = session.status == AuthStatus.signedIn;
     final phoneFromProfile = (widget.driverData?['phone'] ?? '').toString().trim();
     final accountLabel = phoneFromProfile.isNotEmpty
         ? phoneFromProfile
-        : _phoneFromAuthEmail(user?.email);
+        : (session.phone.isNotEmpty ? session.phone : '—');
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -82,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             // Краткая карточка с номером водителя (без служебного email).
-            if (user != null)
+            if (signedIn)
               AppCard(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -268,7 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'минимально необходимый объём данных (ФИО, телефон, документы '
                             'водителя и ТС, подпись) исключительно для формирования '
                             'электронных путевых листов в соответствии с 152-ФЗ.\n\n'
-                            'Данные хранятся в Firebase, передаются только администратору '
+                            'Данные хранятся на сервере AsemPro (Cloudflare), передаются только администратору '
                             'таксопарка и не передаются иным третьим лицам.\n\n'
                             'Вы можете запросить удаление аккаунта в этом приложении.\n\n'
                             'Полный текст: taxopark-admin.pages.dev/privacy.html',
@@ -336,7 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                       );
-                      if (ok == true) await FirebaseAuth.instance.signOut();
+                      if (ok == true) await Session.instance.signOut();
                     },
                   ),
                   const Divider(height: 1, color: AppTheme.border),

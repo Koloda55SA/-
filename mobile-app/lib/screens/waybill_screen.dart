@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../services/api.dart';
 import '../theme/app_theme.dart';
 import '../services/waybill_pdf_service.dart';
 import 'waybill_preview_screen.dart';
@@ -15,15 +13,11 @@ import 'signature_screen.dart';
 /// Для хранения моментов времени используйте DateTime.now() (настоящий UTC).
 DateTime _moscowNow() => DateTime.now().toUtc().add(const Duration(hours: 3));
 
-const _months = [
-  '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-];
-
 /// Запрос допуска на линию и получение путевого листа.
 ///
 /// 1. Водитель вводит одометр, ставит подпись и нажимает «Запросить допуск» —
-///    создаётся путевой лист со статусом `pending`.
+///    сервер создаёт путевой лист со статусом `pending` (данные листа берутся
+///    из профиля водителя на сервере).
 /// 2. Медик и мастер на сайте сами отмечают допуск под своими учётными
 ///    записями. Время осмотров в листе — реальное время их отметок.
 /// 3. Как только оба допустили, статус становится `active` и путевой лист
@@ -56,7 +50,8 @@ class _WaybillScreenState extends State<WaybillScreen> {
 
   String? _requestId;
   Map<String, dynamic>? _request;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
+  /// Пока ждём допуска — спрашиваем сервер каждые 4 секунды.
+  late final Poller _poller = Poller(_loadRequest, const Duration(seconds: 4));
 
   @override
   void initState() {
@@ -70,7 +65,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _poller.stop();
     _odometerController.dispose();
     super.dispose();
   }
@@ -450,30 +445,36 @@ class _WaybillScreenState extends State<WaybillScreen> {
 
   // ───────────────────────── Логика ─────────────────────────
   void _listen(String id) {
-    _sub?.cancel();
-    _sub = FirebaseFirestore.instance
-        .collection('waybills')
-        .doc(id)
-        .snapshots()
-        .listen((snap) {
-      final data = snap.data();
-      if (!mounted || data == null) return;
-      setState(() => _request = data);
-      // Оба допустили — сразу показываем путевой лист.
-      if (data['status'] == 'active' && !_opened) {
-        _opened = true;
-        _openPdf(data);
-      }
-    }, onError: (e) => _showError('Ошибка связи: $e'));
+    _requestId = id;
+    _poller.start();
+  }
+
+  Future<void> _loadRequest() async {
+    final id = _requestId;
+    if (id == null) return;
+    try {
+      final data = await Api.get('/api/driver/waybills/${Uri.encodeComponent(id)}');
+      _applyRequest(data);
+    } on ApiException catch (e) {
+      // Без связи молча ждём следующего опроса.
+      if (!e.isNetwork) _showError(e.message);
+    }
+  }
+
+  void _applyRequest(Map<String, dynamic> data) {
+    if (!mounted) return;
+    setState(() => _request = data);
+    final status = data['status'];
+    // Решение принято — дальше опрашивать незачем.
+    if (status != 'pending') _poller.stop();
+    // Оба допустили — сразу показываем путевой лист.
+    if (status == 'active' && !_opened) {
+      _opened = true;
+      _openPdf(data);
+    }
   }
 
   Future<void> _submitRequest() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _showError('Сессия истекла. Войдите снова.');
-      return;
-    }
-
     final odometer = int.tryParse(_odometerController.text.trim());
     if (odometer == null || odometer <= 0) {
       _showError('Введите корректное показание одометра');
@@ -482,89 +483,39 @@ class _WaybillScreenState extends State<WaybillScreen> {
 
     setState(() => _isSubmitting = true);
 
-    String s(String key) {
-      final v = widget.driverData[key];
-      return v == null ? '' : v.toString();
-    }
-
-    final now = DateTime.now();
-    final msk = _moscowNow();
-    // Номер листа: время с точностью до 0,1 с — совпадения между водителями практически исключены.
-    final waybillNumber = '${now.millisecondsSinceEpoch ~/ 100}';
-
-    final waybillData = <String, dynamic>{
-      'waybillNumber': waybillNumber,
-      // Дата запроса; при выпуске листа заменяется датой допуска.
-      'date': DateFormat('dd.MM.yyyy').format(msk),
-      'dateFormatted': '«${DateFormat('dd').format(msk)}» ${_months[msk.month]} ${msk.year} г.',
-      'driverId': widget.driverDocId,
-      'authUid': user.uid,
-      'driverName': s('fullName'),
-      'driverPhone': s('phone'),
-      'carModel': s('carModel'),
-      'plateNumber': s('plateNumber'),
-      'license': s('license'),
-      'licenseClass': s('licenseClass'),
-      'licenseIssued': s('licenseIssued'),
-      'licenseExpires': s('licenseExpires'),
-      'driverIdNumber': s('driverIdNumber'),
-      'osgop': s('osgop'),
-      'garageNumber': s('garageNumber'),
-      'tabNumber': s('tabNumber'),
-      'snils': s('snils'),
-      'driverInn': s('inn'),
-      'transportType': s('transportType'),
-      'commType': s('commType'),
-      'orgName': s('orgName'),
-      'orgAddress': s('orgAddress'),
-      'ogrn': s('orgOgrn'),
-      'orgInn': s('orgInn'),
-      'orgPhone': s('orgPhone'),
-      'okud': s('okud').isEmpty ? '0345001' : s('okud'),
-      'okpo': s('okpo'),
-      'permitNumber': s('permit'),
-      'mintransOrder': s('mintrans').isEmpty ? '390 ОТ 28.09.2022' : s('mintrans'),
-      'medCert': s('medCert'),
-      'techCert': s('techCert'),
-      'odometerStart': odometer.toString(),
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    };
+    final body = <String, dynamic>{'odometer': odometer};
     if (_signatureImage != null) {
-      waybillData['signatureData'] = 'data:image/png;base64,${base64Encode(_signatureImage!)}';
+      body['signatureData'] = 'data:image/png;base64,${base64Encode(_signatureImage!)}';
     }
 
-    final db = FirebaseFirestore.instance;
-    final ref = db.collection('waybills').doc();
-    // Лист и счётчик лимита пишем одной пачкой: либо оба, либо ничего.
-    final batch = db.batch()
-      ..set(ref, waybillData)
-      ..set(
-        db.collection('driverCounters').doc(user.uid),
-        {'count': FieldValue.increment(1)},
-        SetOptions(merge: true),
-      );
-
+    Map<String, dynamic> created;
     try {
-      await batch.commit().timeout(const Duration(seconds: 20));
-    } on TimeoutException {
-      // Нет связи: запрос сохранён на телефоне и уйдёт сам, когда появится интернет.
-      _showError('Нет связи с сервером. Запрос отправится, когда появится интернет.');
-    } on FirebaseException catch (e) {
-      _showError('Ошибка Firebase: ${e.message ?? e.code}');
-      if (mounted) setState(() => _isSubmitting = false);
-      return;
-    } catch (e) {
-      _showError('Не удалось отправить запрос: $e');
+      created = await Api.post('/api/driver/waybills', body);
+    } on ApiException catch (e) {
+      if (e.code == 'already-exists') {
+        // Запрос уже есть (например, ответ сервера не дошёл с первого раза) —
+        // переходим к нему, а не создаём второй.
+        try {
+          final r = await Api.get('/api/driver/waybills/current');
+          final w = r['waybill'];
+          if (w is Map<String, dynamic> && w['id'] != null) {
+            if (!mounted) return;
+            setState(() => _isSubmitting = false);
+            _listen(w['id'].toString());
+            _applyRequest(w);
+            return;
+          }
+        } catch (_) {}
+      }
+      _showError(e.message);
       if (mounted) setState(() => _isSubmitting = false);
       return;
     }
     if (!mounted) return;
-    setState(() {
-      _isSubmitting = false;
-      _requestId = ref.id;
-    });
-    _listen(ref.id);
+    final id = (created['id'] ?? '').toString();
+    setState(() => _isSubmitting = false);
+    _listen(id);
+    _applyRequest(created);
   }
 
   Future<void> _cancelRequest() async {
@@ -572,14 +523,13 @@ class _WaybillScreenState extends State<WaybillScreen> {
     if (id == null) return;
     setState(() => _isCancelling = true);
     try {
-      await FirebaseFirestore.instance.collection('waybills').doc(id).update({
-        'status': 'cancelled',
-        'closedAt': FieldValue.serverTimestamp(),
-      });
+      await Api.post('/api/driver/waybills/${Uri.encodeComponent(id)}/cancel');
       if (mounted) Navigator.pop(context);
-    } catch (e) {
-      _showError('Не удалось отменить: $e');
+    } on ApiException catch (e) {
+      // Пока отменяли, медик/мастер уже приняли решение — показываем его.
+      _showError(e.code == 'wrong-status' ? 'Запрос уже обработан' : 'Не удалось отменить: ${e.message}');
       if (mounted) setState(() => _isCancelling = false);
+      await _poller.refresh();
     }
   }
 

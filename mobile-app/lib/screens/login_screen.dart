@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../services/api.dart';
+import '../services/session.dart';
 
 import '../theme/app_theme.dart';
 
 /// Экран входа водителя.
 /// Логин — номер телефона, пароль задаётся админом при регистрации.
-/// Под капотом используется Firebase Email Auth с синтетическим email
-/// формата "<digits>@asempro.driver" (например, "79991234567@asempro.driver").
+/// Проверку пароля делает сервер AsemPro, приложение получает токен входа.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -33,12 +33,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return phone;
   }
 
-  /// "+79991234567" -> "79991234567@asempro.driver"
-  String _phoneToEmail(String normalizedPhone) {
-    final digits = normalizedPhone.replaceAll(RegExp(r'\D'), '');
-    return '$digits@asempro.driver';
-  }
-
   Future<void> _signIn() async {
     final phone = _normalizePhone(_phoneController.text.trim());
     final password = _passwordController.text.trim();
@@ -58,32 +52,23 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final email = _phoneToEmail(phone);
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      await Session.instance.signIn(phone, password);
       // AuthGate в main.dart автоматически переключит на HomeScreen
-    } on FirebaseAuthException catch (e) {
-      String msg = 'Ошибка входа';
+    } on ApiException catch (e) {
+      String msg;
       switch (e.code) {
-        case 'user-not-found':
-        case 'invalid-credential':
-        case 'wrong-password':
+        case 'invalid-credentials':
           msg = 'Неверный номер или пароль';
           break;
-        case 'invalid-email':
-          msg = 'Некорректный номер телефона';
-          break;
-        case 'user-disabled':
+        case 'blocked':
           msg = 'Аккаунт отключён администратором';
           break;
-        case 'too-many-requests':
-          msg = 'Слишком много попыток. Попробуйте позже';
+        case 'too-many-attempts':
+        case 'network':
+          msg = e.message;
           break;
-        case 'network-request-failed':
-          msg = 'Нет соединения с интернетом';
-          break;
+        default:
+          msg = 'Ошибка входа: ${e.message}';
       }
       if (mounted) {
         setState(() {

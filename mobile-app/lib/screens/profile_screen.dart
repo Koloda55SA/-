@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/api.dart';
 import '../theme/app_theme.dart';
 
 /// Личный кабинет водителя: ФИО, фото-инициалы, контактная информация,
@@ -273,8 +272,7 @@ class _RowDiv extends StatelessWidget {
   }
 }
 
-/// Сколько ЭПЛ выпущено. Берём один документ-счётчик, а не скачиваем
-/// все путевые листы (с подписями) ради подсчёта. Лимита на ЭПЛ нет.
+/// Сколько ЭПЛ выпущено (сервер считает выпущенные листы). Лимита на ЭПЛ нет.
 class _StatsRow extends StatefulWidget {
   final String driverDocId;
   const _StatsRow({required this.driverDocId});
@@ -284,33 +282,35 @@ class _StatsRow extends StatefulWidget {
 }
 
 class _StatsRowState extends State<_StatsRow> {
-  Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream;
+  int? _issued;
 
   @override
   void initState() {
     super.initState();
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      _stream = FirebaseFirestore.instance.collection('driverCounters').doc(user.uid).snapshots();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await Api.get('/api/driver/stats');
+      final c = r['issued'];
+      if (mounted) setState(() => _issued = c is num ? c.toInt() : 0);
+    } catch (e) {
+      debugPrint('Stats load error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_stream == null) return const SizedBox();
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _stream,
-      builder: (context, snap) {
-        final c = snap.data?.data()?['count'];
-        final used = c is num ? c.toInt() : 0;
-        return Row(
-          children: [
-            Expanded(child: _stat('Выпущено ЭПЛ', '$used', AppTheme.primary, Icons.description_outlined)),
-            const SizedBox(width: 10),
-            Expanded(child: _stat('Лимит', 'Без лимита', AppTheme.success, Icons.all_inclusive)),
-          ],
-        );
-      },
+    return Row(
+      children: [
+        Expanded(
+          child: _stat('Выпущено ЭПЛ', _issued == null ? '—' : '$_issued', AppTheme.primary,
+              Icons.description_outlined),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: _stat('Лимит', 'Без лимита', AppTheme.success, Icons.all_inclusive)),
+      ],
     );
   }
 

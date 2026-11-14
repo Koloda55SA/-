@@ -11,7 +11,7 @@ cd cloudflare-api
 echo BOOTSTRAP_SECRET=local-test-secret > .dev.vars
 wrangler d1 migrations apply asem-pro --local
 wrangler dev --local --port 8787
-node test/smoke.mjs http://127.0.0.1:8787   # 56 сквозных проверок
+node test/smoke.mjs http://127.0.0.1:8787   # 74 сквозные проверки
 ```
 
 ## Выкладка
