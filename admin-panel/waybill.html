@@ -114,9 +114,6 @@
         <div class="state"><div class="spinner"></div>Загрузка путевого листа…</div>
     </div>
 
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/config.js"></script>
     <script>
         function esc(v) {
@@ -356,9 +353,10 @@
             const id = new URLSearchParams(location.search).get('id');
             if (!id) { renderState('Не указан идентификатор путевого листа.'); return; }
             try {
-                const doc = await db.collection('waybills').doc(id).get();
-                if (!doc.exists) { renderState('Путевой лист не найден.'); return; }
-                render(doc.data() || {}, id);
+                const res = await fetch(`${API_BASE}/api/public/waybills/${encodeURIComponent(id)}`);
+                if (res.status === 404) { renderState('Путевой лист не найден.'); return; }
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                render(await res.json(), id);
             } catch (e) {
                 console.error('Load waybill error:', e);
                 renderState('Ошибка загрузки путевого листа.');

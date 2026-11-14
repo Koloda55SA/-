@@ -1,25 +1,14 @@
-// Сотрудники: медики и мастера (контролёры тех. состояния ТС).
-// Каждый получает свою учётную запись (вход на этот же сайт по телефону и паролю)
-// и сам ставит отметки допуска в разделе «Допуск».
-// Модель: admins/{uid} = { role: 'medic'|'mechanic'|'admin', fullName, phone,
-//                           certSerial, certIssued, certExpires }
-// Данные сертификата вносятся из сертификата самого сотрудника и печатаются
-// в отметке о допуске на ЭПЛ.
+// Сотрудники: медики, мастера и администраторы.
+// Каждый входит на этот сайт по своему телефону и паролю. Данные сертификата
+// вносятся из сертификата самого сотрудника и печатаются в отметке о допуске.
 const Staff = {
-    _unsub: null,
     _list: [],
     _editingId: null,
 
     ROLES: {
-        medic:    { label: 'Медик',          cls: 'status-active' },
+        medic:    { label: 'Медик',                cls: 'status-active' },
         mechanic: { label: 'Мастер (техконтроль)', cls: 'status-open' },
-        admin:    { label: 'Администратор',  cls: 'status-debtor' },
-    },
-
-    _esc(value) {
-        const s = value == null ? '' : String(value);
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        admin:    { label: 'Администратор',        cls: 'status-debtor' },
     },
 
     // "2026-11-15" (input type=date) <-> "15.11.2026" (как печатается на ЭПЛ)
@@ -34,41 +23,35 @@ const Staff = {
 
     init() {
         const form = document.getElementById('staff-form');
-        if (form) {
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                Staff.save();
-            });
+        if (form) form.addEventListener('submit', (e) => { e.preventDefault(); Staff.save(); });
+    },
+
+    async load() {
+        try {
+            const r = await Api.get('/api/admin/staff');
+            Staff._list = r.items || [];
+            Staff.render();
+        } catch (e) {
+            showToast('Ошибка загрузки сотрудников: ' + e.message, 'error');
         }
     },
 
-    load() {
-        if (Staff._unsub) return;
-        Staff._unsub = db.collection('admins').onSnapshot(snap => {
-            Staff._list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            Staff._list.sort((a, b) => String(a.fullName || a.phone || '').localeCompare(String(b.fullName || b.phone || ''), 'ru'));
-            Staff.render();
-        }, err => console.error('Staff onSnapshot error:', err));
-    },
-
-    stopRealtime() {
-        if (Staff._unsub) { Staff._unsub(); Staff._unsub = null; }
-    },
+    stopRealtime() { Staff._list = []; },
 
     render() {
         const tbody = document.getElementById('staff-tbody');
         if (!tbody) return;
-        const e = Staff._esc;
+        const e = escHtml;
         if (Staff._list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Сотрудников пока нет</td></tr>';
             return;
         }
         tbody.innerHTML = Staff._list.map(s => {
-            const r = Staff.ROLES[s.role || 'admin'] || Staff.ROLES.admin;
+            const r = Staff.ROLES[s.role] || Staff.ROLES.admin;
             const cert = s.certSerial
                 ? `${e(s.certSerial)}<div class="check-meta">${e(s.certIssued)} — ${e(s.certExpires)}</div>`
                 : '<span style="color:var(--text-light)">—</span>';
-            const isMe = Auth.currentUser && Auth.currentUser.uid === s.id;
+            const isMe = Auth.currentUser && Auth.currentUser.id === s.id;
             const id = e(s.id);
             return `
                 <tr>
@@ -112,7 +95,7 @@ const Staff = {
         const setV = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v || ''; };
         setV('staff-fullname', s.fullName);
         setV('staff-phone', s.phone);
-        setV('staff-role', s.role || 'admin');
+        setV('staff-role', s.role);
         setV('staff-cert-serial', s.certSerial);
         setV('staff-cert-issued', Staff._toIso(s.certIssued));
         setV('staff-cert-expires', Staff._toIso(s.certExpires));
@@ -129,69 +112,38 @@ const Staff = {
     },
 
     async save() {
-        const fullName = Staff._val('staff-fullname');
-        const role = Staff._val('staff-role') || 'medic';
-        const certSerial = Staff._val('staff-cert-serial').replace(/[^0-9a-fA-F]/g, '').toLowerCase();
-        const certIssued = Staff._toRu(Staff._val('staff-cert-issued'));
-        const certExpires = Staff._toRu(Staff._val('staff-cert-expires'));
-
-        if (!fullName) { showToast('Укажите ФИО сотрудника', 'error'); return; }
-        if (!Staff.ROLES[role]) { showToast('Выберите роль', 'error'); return; }
+        const body = {
+            fullName: Staff._val('staff-fullname'),
+            role: Staff._val('staff-role') || 'medic',
+            certSerial: Staff._val('staff-cert-serial'),
+            certIssued: Staff._toRu(Staff._val('staff-cert-issued')),
+            certExpires: Staff._toRu(Staff._val('staff-cert-expires')),
+        };
+        if (!body.fullName) { showToast('Укажите ФИО сотрудника', 'error'); return; }
 
         const btn = document.querySelector('#staff-form button[type="submit"]');
         const orig = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Сохранение...';
         try {
-            const data = {
-                fullName, role, certSerial, certIssued, certExpires,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            };
             if (Staff._editingId) {
-                await db.collection('admins').doc(Staff._editingId).update(data);
+                await Api.put('/api/admin/staff/' + encodeURIComponent(Staff._editingId), body);
                 showToast('Данные сотрудника сохранены', 'success');
             } else {
-                const phone = Drivers._normalizePhone(Staff._val('staff-phone'));
-                if (phone.replace(/\D/g, '').length < 10) throw new Error('Некорректный номер телефона');
-                const password = Staff._val('staff-password');
-                if (password.length < 6) throw new Error('Пароль — минимум 6 символов');
-                const email = `${phone.replace(/\D/g, '')}@asempro.admin`;
-
-                // Создаём аккаунт через вторичное приложение, чтобы админ не разлогинился.
-                const secondaryAuth = Drivers._getSecondaryAuth();
-                const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-                const uid = cred.user.uid;
-                await secondaryAuth.signOut();
-                await db.collection('admins').doc(uid).set({
-                    ...data,
-                    phone,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    createdBy: Auth.currentUser.uid,
-                });
-                showToast(`Сотрудник создан. Вход: ${phone}, пароль: ${password}`, 'success');
+                body.phone = Auth._formatPhone(Staff._val('staff-phone'));
+                body.password = Staff._val('staff-password');
+                if (body.password.length < 6) throw new Error('Пароль — минимум 6 символов');
+                await Api.post('/api/admin/staff', body);
+                showToast(`Сотрудник создан. Вход: ${body.phone}, пароль: ${body.password}`, 'success');
             }
             Staff.resetForm();
+            await Staff.load();
         } catch (e) {
-            console.error('Staff save error:', e);
-            let msg = e.message || e.code;
-            if (e.code === 'auth/email-already-in-use') msg = 'Сотрудник с таким телефоном уже есть';
-            showToast('Ошибка: ' + msg, 'error');
+            showToast('Ошибка: ' + e.message, 'error');
         } finally {
             btn.disabled = false;
             btn.innerHTML = orig;
         }
-    },
-
-    async _callWorker(path, body) {
-        if (typeof AUTH_WORKER_URL !== 'string' || !AUTH_WORKER_URL) throw new Error('Сервер смены пароля не подключён');
-        const idToken = await auth.currentUser.getIdToken();
-        const res = await fetch(AUTH_WORKER_URL.replace(/\/+$/, '') + path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken, ...body }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
     },
 
     async resetPassword(id) {
@@ -201,7 +153,7 @@ const Staff = {
         if (pwd === null) return;
         if (pwd.trim().length < 6) { showToast('Пароль — минимум 6 символов', 'error'); return; }
         try {
-            await Staff._callWorker('/reset-password', { driverUid: id, newPassword: pwd.trim() });
+            await Api.post(`/api/admin/users/${encodeURIComponent(id)}/password`, { password: pwd.trim() });
             showToast('Пароль изменён', 'success');
         } catch (e) {
             showToast('Ошибка смены пароля: ' + e.message, 'error');
@@ -213,16 +165,11 @@ const Staff = {
         if (!s) return;
         if (!confirm(`Удалить сотрудника ${s.fullName || s.phone}? Он больше не сможет войти и ставить отметки.`)) return;
         try {
-            // Сначала убираем доступ (документ роли), затем — сам аккаунт входа.
-            await db.collection('admins').doc(id).delete();
-            try {
-                await Staff._callWorker('/delete-driver', { driverUid: id });
-            } catch (e) {
-                console.warn('Auth account delete failed (доступ уже снят):', e);
-            }
+            await Api.del('/api/admin/staff/' + encodeURIComponent(id));
             showToast('Сотрудник удалён', 'success');
+            await Staff.load();
         } catch (e) {
-            showToast('Ошибка удаления: ' + (e.message || e.code), 'error');
+            showToast('Ошибка удаления: ' + e.message, 'error');
         }
     }
 };

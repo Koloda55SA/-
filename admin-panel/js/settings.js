@@ -1,30 +1,6 @@
-// Settings Module - Simplified (no med/tech fields)
+// Настройки: организация по умолчанию для новых водителей.
 const Settings = {
-    FIELDS: [
-        'org-name', 'ogrn', 'inn', 'phone', 'address'
-    ],
-
-    KEY_MAP: {
-        'org-name': 'orgName',
-        'ogrn': 'ogrn',
-        'inn': 'inn',
-        'phone': 'phone',
-        'address': 'address'
-    },
-
-    async loadSettings() {
-        try {
-            const doc = await db.collection('settings').doc('company').get();
-            if (!doc.exists) return;
-            const data = doc.data();
-            for (const field of Settings.FIELDS) {
-                const el = document.getElementById('setting-' + field);
-                if (el) el.value = data[Settings.KEY_MAP[field]] || '';
-            }
-        } catch (error) {
-            console.error('Error loading settings:', error);
-        }
-    },
+    FIELDS: { 'org-name': 'orgName', 'ogrn': 'ogrn', 'inn': 'inn', 'phone': 'phone', 'address': 'address' },
 
     init() {
         document.getElementById('settings-form').addEventListener('submit', (e) => {
@@ -33,20 +9,29 @@ const Settings = {
         });
     },
 
-    async saveSettings() {
+    async loadSettings() {
         try {
-            const payload = {
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            for (const field of Settings.FIELDS) {
+            const data = await Api.get('/api/admin/settings');
+            for (const [field, key] of Object.entries(Settings.FIELDS)) {
                 const el = document.getElementById('setting-' + field);
-                payload[Settings.KEY_MAP[field]] = el ? el.value : '';
+                if (el) el.value = data[key] || '';
             }
-            await db.collection('settings').doc('company').set(payload, { merge: true });
+        } catch (e) {
+            console.error('Error loading settings:', e);
+        }
+    },
+
+    async saveSettings() {
+        const payload = {};
+        for (const [field, key] of Object.entries(Settings.FIELDS)) {
+            const el = document.getElementById('setting-' + field);
+            payload[key] = el ? el.value : '';
+        }
+        try {
+            await Api.put('/api/admin/settings', payload);
             showToast('Настройки сохранены!', 'success');
-        } catch (error) {
-            console.error('Error saving settings:', error);
-            showToast('Ошибка сохранения настроек', 'error');
+        } catch (e) {
+            showToast('Ошибка сохранения настроек: ' + e.message, 'error');
         }
     }
 };

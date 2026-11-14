@@ -1,73 +1,53 @@
 // Допуск на линию: медосмотр и техконтроль.
 //
-// Водитель в приложении нажимает «Запросить допуск» — создаётся путевой лист
-// со статусом 'pending'. Медик и мастер входят на сайт под СВОИМИ учётными
-// записями (роль 'medic' / 'mechanic' в admins/{uid}) и каждый отмечает свою
-// часть: «Допустить» или «Не допустить». В лист записывается, кто и когда
-// отметил, и данные его сертификата из профиля сотрудника.
-// Когда обе отметки «Допущен» — лист становится 'active' и водитель получает ЭПЛ.
-// Администратор видит статусы, но отмечать за медика и мастера не может
-// (это же запрещено правилами Firestore).
+// Водитель в приложении нажимает «Запросить допуск». Медик и мастер входят на
+// сайт под своими учётными записями и каждый отмечает свою часть. Сервер
+// записывает, кто и когда отметил, и выпускает лист после обеих отметок.
+// Администратор видит очередь, но отмечать за медика и мастера не может.
 const Checks = {
-    _unsub: null,
+    _stop: null,
     _items: [],
     _busy: {},
 
-    MONTHS: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-             'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
-
-    _esc(value) {
-        const s = value == null ? '' : String(value);
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    _tsText(ms) {
+        if (!ms) return '';
+        return new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
     },
 
-    // Московское время (UTC+3, без перехода на летнее время).
-    _msk(date) {
-        const m = new Date(date.getTime() + 3 * 3600 * 1000);
-        const two = (x) => String(x).padStart(2, '0');
-        return {
-            date: `${two(m.getUTCDate())}.${two(m.getUTCMonth() + 1)}.${m.getUTCFullYear()}`,
-            dateFormatted: `«${two(m.getUTCDate())}» ${Checks.MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()} г.`,
-            time: `${two(m.getUTCHours())}:${two(m.getUTCMinutes())}:${two(m.getUTCSeconds())}`,
-        };
-    },
-
-    _tsText(ts) {
-        if (!ts || !ts.seconds) return '';
-        return Checks._msk(new Date(ts.seconds * 1000)).time.slice(0, 5);
-    },
-
-    // Подписка на листы, ожидающие допуска. Сортировка — на клиенте,
-    // чтобы не требовался составной индекс.
+    // Очередь обновляется каждые 5 секунд (вместо realtime-подписки).
     load() {
-        if (Checks._unsub) return;
+        if (Checks._stop) return;
         const tbody = document.getElementById('checks-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Загрузка…</td></tr>';
-        Checks._unsub = db.collection('waybills')
-            .where('status', '==', 'pending')
-            .limit(200)
-            .onSnapshot(snap => {
-                Checks._items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                Checks._items.sort((a, b) => ((a.createdAt && a.createdAt.seconds) || 0) - ((b.createdAt && b.createdAt.seconds) || 0));
+        if (tbody && !Checks._items.length) tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Загрузка…</td></tr>';
+        Checks._stop = poll(async () => {
+            try {
+                const r = await Api.get('/api/checks');
+                const items = r.items || [];
+                // Перерисовываем только при изменениях: иначе кнопка заменяется
+                // прямо во время нажатия и клик теряется.
+                const sig = JSON.stringify(items);
+                if (sig === Checks._sig) return;
+                Checks._sig = sig;
+                Checks._items = items;
                 Checks.render();
-            }, err => {
-                console.error('Checks onSnapshot error:', err);
+            } catch (e) {
                 const tb = document.getElementById('checks-tbody');
-                if (tb) tb.innerHTML = '<tr><td colspan="5" class="table-empty" style="color:var(--danger)">Ошибка загрузки. Проверьте права доступа.</td></tr>';
-            });
+                if (tb && !Checks._items.length) tb.innerHTML = `<tr><td colspan="5" class="table-empty" style="color:var(--danger)">${escHtml(e.message)}</td></tr>`;
+                throw e;
+            }
+        }, 5000);
     },
 
     stopRealtime() {
-        if (Checks._unsub) { Checks._unsub(); Checks._unsub = null; }
+        if (Checks._stop) { Checks._stop(); Checks._stop = null; }
         Checks._items = [];
+        Checks._sig = null;
     },
 
     _updateBadge() {
         const badge = document.getElementById('checks-badge');
         if (!badge) return;
-        const role = Auth.role;
-        const prefix = role === 'medic' ? 'med' : role === 'mechanic' ? 'tech' : null;
+        const prefix = Auth.role === 'medic' ? 'med' : Auth.role === 'mechanic' ? 'tech' : null;
         // Медику/мастеру — сколько ждут именно его; админу — сколько всего в очереди.
         const n = prefix ? Checks._items.filter(w => !w[prefix + 'Status']).length : Checks._items.length;
         badge.textContent = n > 99 ? '99+' : String(n);
@@ -75,9 +55,8 @@ const Checks = {
     },
 
     _cell(w, prefix) {
-        const e = Checks._esc;
-        const st = w[prefix + 'Status'];
-        if (st === 'ok') {
+        const e = escHtml;
+        if (w[prefix + 'Status'] === 'ok') {
             return `<span class="status-badge status-active"><i class="fas fa-check"></i> Допущен</span>
                     <div class="check-meta">${e(w[prefix + 'Name'])} · ${e(w[prefix + 'Time'] || Checks._tsText(w[prefix + 'ConfirmedAt']))}</div>`;
         }
@@ -86,8 +65,8 @@ const Checks = {
             const busy = Checks._busy[w.id] ? 'disabled' : '';
             const id = e(w.id);
             return `<div class="check-actions">
-                        <button class="btn btn-sm btn-primary" ${busy} onclick="Checks.mark('${id}', '${prefix}', true)"><i class="fas fa-check"></i> Допустить</button>
-                        <button class="btn btn-sm btn-danger" ${busy} onclick="Checks.mark('${id}', '${prefix}', false)" title="Не допустить"><i class="fas fa-xmark"></i></button>
+                        <button class="btn btn-sm btn-primary" ${busy} onclick="Checks.mark('${id}', true)"><i class="fas fa-check"></i> Допустить</button>
+                        <button class="btn btn-sm btn-danger" ${busy} onclick="Checks.mark('${id}', false)" title="Не допустить"><i class="fas fa-xmark"></i></button>
                     </div>`;
         }
         return '<span class="status-badge status-open"><i class="fas fa-hourglass-half"></i> Ожидает</span>';
@@ -97,7 +76,7 @@ const Checks = {
         Checks._updateBadge();
         const tbody = document.getElementById('checks-tbody');
         if (!tbody) return;
-        const e = Checks._esc;
+        const e = escHtml;
         if (Checks._items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Нет водителей, ожидающих допуска</td></tr>';
             return;
@@ -112,11 +91,10 @@ const Checks = {
             </tr>`).join('');
     },
 
-    // Отметка медика (prefix='med') или мастера (prefix='tech').
-    async mark(waybillId, prefix, ok) {
-        const myRole = prefix === 'med' ? 'medic' : 'mechanic';
-        if (Auth.role !== myRole || !Auth.currentUser) {
-            showToast('Отметку ставит только сам ' + (prefix === 'med' ? 'медик' : 'мастер'), 'error');
+    // Отметка ставится от имени вошедшего медика/мастера; время — серверное.
+    async mark(waybillId, ok) {
+        if (Auth.role !== 'medic' && Auth.role !== 'mechanic') {
+            showToast('Отметку ставит только сам медик или мастер', 'error');
             return;
         }
         let reason = '';
@@ -125,62 +103,18 @@ const Checks = {
             if (r === null) return;
             reason = r.trim().slice(0, 300);
         }
-
-        const profile = Auth.profile || {};
-        const other = prefix === 'med' ? 'tech' : 'med';
-        const ref = db.collection('waybills').doc(waybillId);
-        const ts = firebase.firestore.FieldValue.serverTimestamp;
         Checks._busy[waybillId] = true;
         Checks.render();
         try {
-            const result = await db.runTransaction(async tx => {
-                const snap = await tx.get(ref);
-                if (!snap.exists) throw new Error('Путевой лист не найден');
-                const w = snap.data() || {};
-                if (w.status !== 'pending') throw new Error('Запрос уже обработан');
-                if (w[prefix + 'Status']) throw new Error('Вы уже отметили этот запрос');
-
-                const now = new Date();
-                const msk = Checks._msk(now);
-                const upd = {
-                    [prefix + 'Status']: ok ? 'ok' : 'rejected',
-                    [prefix + 'ConfirmedAt']: ts(),
-                    [prefix + 'ConfirmedBy']: Auth.currentUser.uid,
-                    [prefix + 'Name']: profile.fullName || '',
-                    [prefix + 'CertSerial']: profile.certSerial || '',
-                    [prefix + 'Issued']: profile.certIssued || '',
-                    [prefix + 'Expires']: profile.certExpires || '',
-                    [prefix + 'Time']: msk.time,
-                };
-                if (!ok) {
-                    upd.status = 'rejected';
-                    upd.rejectedAt = ts();
-                    upd.rejectedBy = Auth.currentUser.uid;
-                    upd.rejectedRole = myRole;
-                    upd.rejectReason = reason;
-                } else if (w[other + 'Status'] === 'ok') {
-                    // Вторая отметка — выпускаем ЭПЛ. Смена начинается сейчас, лист действует 12 часов.
-                    const end = new Date(now.getTime() + 12 * 3600 * 1000);
-                    const mskEnd = Checks._msk(end);
-                    upd.status = 'active';
-                    upd.date = msk.date;
-                    upd.dateFormatted = msk.dateFormatted;
-                    upd.shiftStart = msk.time;
-                    upd.departureTime = msk.time;
-                    upd.shiftEnd = mskEnd.time;
-                    upd.shiftEndDate = mskEnd.date;
-                    upd.expiresAt = firebase.firestore.Timestamp.fromDate(end);
-                    upd.activatedAt = ts();
-                }
-                tx.update(ref, upd);
-                return upd.status || 'pending';
-            });
-            if (result === 'active') showToast('Допущен. Путевой лист выпущен', 'success');
-            else if (result === 'rejected') showToast('Отказ сохранён', 'success');
+            const r = await Api.post(`/api/checks/${encodeURIComponent(waybillId)}/mark`, { ok, reason });
+            if (r.status === 'active') showToast('Допущен. Путевой лист выпущен', 'success');
+            else if (r.status === 'rejected') showToast('Отказ сохранён', 'success');
             else showToast('Допуск отмечен. Ждём вторую отметку', 'success');
+            const fresh = await Api.get('/api/checks');
+            Checks._items = fresh.items || [];
+            Checks._sig = JSON.stringify(Checks._items);
         } catch (e) {
-            console.error('Check mark error:', e);
-            showToast('Ошибка: ' + (e.message || e.code), 'error');
+            showToast('Ошибка: ' + e.message, 'error');
         } finally {
             delete Checks._busy[waybillId];
             Checks.render();
