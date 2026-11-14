@@ -66,7 +66,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
   getFirestore, collection, doc, getDocFromServer as getDoc, getDocsFromServer as getDocs,
-  query, where, orderBy, limit, startAfter, getCountFromServer, Timestamp,
+  getCountFromServer, Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Тот же проект, что у старого сайта админки и приложения.
@@ -83,8 +83,6 @@ const db = getFirestore(app);
 // Берём только листы за последние двое суток: действующие (12 ч) и ожидающие
 // допуска — чтобы у водителя не пропал открытый лист и работал QR-код на нём.
 const RECENT_MS = 48 * 3600 * 1000;
-const recentWaybills = (...extra) => query(collection(db, 'waybills'),
-  where('createdAt', '>=', Timestamp.fromMillis(meta.waybillsSince)), orderBy('createdAt'), ...extra);
 
 const COLLECTIONS = [
   ['admins', 'Сотрудники'],
@@ -94,7 +92,9 @@ const COLLECTIONS = [
   ['payments', 'Оплаты'],
   ['deletionRequests', 'Заявки на удаление'],
 ];
-const countQuery = name => (name === 'waybills' ? recentWaybills() : collection(db, name));
+const countDocs = async name => (name === 'waybills'
+  ? countRecentRest()
+  : (await getCountFromServer(collection(db, name))).data().count);
 const PBKDF2_ITER = 100000;   // как на сервере (cloudflare-api/src/auth.js)
 
 const $ = id => document.getElementById(id);
@@ -151,32 +151,94 @@ async function save(name, payload) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Читаем запрос страницами — только с сервера (без кэша:
-// при обрыве связи кэш отдал бы пустой список вместо ошибки).
-// Листы с подписями тяжёлые: размер страницы подстраивается под объём ответа,
-// а при сбое страница повторяется с меньшим размером.
-async function readPaged(makeQuery, onPage) {
-  let last = null;
-  let size = 50;
-  for (;;) {
-    let snap;
-    for (let attempt = 1; ; attempt++) {
-      try {
-        snap = await getDocs(last ? makeQuery(startAfter(last), limit(size)) : makeQuery(limit(size)));
-        break;
-      } catch (err) {
-        if (attempt >= 5) throw err;
-        size = Math.max(5, Math.floor(size / 2));
-        log(`Сбой чтения (${err.code || err.message}), повтор по ${size}…`);
-        await sleep(2000 * attempt);
-      }
+// ── Путевые листы — через REST API Firestore ──────────────────────────────
+// Листы с подписями тяжёлые, и постоянное соединение SDK после крупного
+// ответа обрывается («unavailable»). Поэтому каждая страница — отдельный
+// HTTPS-запрос с тем же входом администратора (правила доступа те же).
+const REST = 'https://firestore.googleapis.com/v1/projects/project-3077643193540297838/databases/(default)/documents';
+
+async function rest(method, body) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch(`${REST}:${method}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return await res.json();
+      const text = (await res.text()).slice(0, 300);
+      const err = new Error(`Firestore ${res.status}: ${text}`);
+      err.fatal = res.status < 500 && res.status !== 429;   // нет прав, плохой запрос — повтор не поможет
+      throw err;
+    } catch (err) {
+      if (err.fatal || attempt >= 6) throw err;
+      log(`Сбой связи (${err.message.slice(0, 80)}), повтор через ${2 * attempt} с…`);
+      await sleep(2000 * attempt);
     }
-    if (snap.empty) return;
-    const bytes = await onPage(snap.docs);
-    last = snap.docs[snap.docs.length - 1];
-    if (snap.size < size) return;
-    if (bytes > 8e6) size = Math.max(5, Math.floor(size / 2));
-    else if (bytes < 2e6 && size < 200) size = size * 2;
+  }
+}
+
+// Значение REST API → обычный JSON (время — миллисекунды), как plain().
+function fromRest(v) {
+  if (!v || typeof v !== 'object') return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return Number(v.doubleValue);
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('nullValue' in v) return null;
+  if ('timestampValue' in v) return Date.parse(v.timestampValue);
+  if ('referenceValue' in v) return v.referenceValue.split('/documents/').pop();
+  if ('bytesValue' in v) return v.bytesValue;
+  if ('geoPointValue' in v) return v.geoPointValue;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromRest);
+  if ('mapValue' in v) {
+    const o = {};
+    for (const [k, x] of Object.entries(v.mapValue.fields || {})) o[k] = fromRest(x);
+    return o;
+  }
+  return null;
+}
+
+const recentWhere = () => ({
+  fieldFilter: {
+    field: { fieldPath: 'createdAt' },
+    op: 'GREATER_THAN_OR_EQUAL',
+    value: { timestampValue: new Date(meta.waybillsSince).toISOString() },
+  },
+});
+
+async function countRecentRest() {
+  const r = await rest('runAggregationQuery', {
+    structuredAggregationQuery: {
+      structuredQuery: { from: [{ collectionId: 'waybills' }], where: recentWhere() },
+      aggregations: [{ alias: 'n', count: {} }],
+    },
+  });
+  return Number(r[0].result.aggregateFields.n.integerValue);
+}
+
+// Страницы по 20 листов (~1 МБ), по порядку createdAt, затем id документа.
+async function readRecentWaybills(onPage) {
+  let cursor = null;
+  const size = 20;
+  for (;;) {
+    const structuredQuery = {
+      from: [{ collectionId: 'waybills' }],
+      where: recentWhere(),
+      orderBy: [
+        { field: { fieldPath: 'createdAt' }, direction: 'ASCENDING' },
+        { field: { fieldPath: '__name__' }, direction: 'ASCENDING' },
+      ],
+      limit: size,
+    };
+    if (cursor) structuredQuery.startAt = { values: cursor, before: false };
+    const docs = (await rest('runQuery', { structuredQuery })).map(r => r.document).filter(Boolean);
+    if (!docs.length) return;
+    await onPage(docs.map(d => ({ id: d.name.split('/').pop(), data: fromRest({ mapValue: { fields: d.fields } }) })));
+    const last = docs[docs.length - 1];
+    cursor = [last.fields.createdAt, { referenceValue: last.name }];
+    if (docs.length < size) return;
   }
 }
 
@@ -223,8 +285,7 @@ $('login-form').addEventListener('submit', async (e) => {
     const tbody = $('counts').querySelector('tbody');
     meta.counts = {};
     for (const [name, label] of COLLECTIONS) {
-      const c = await getCountFromServer(countQuery(name));
-      meta.counts[name] = c.data().count;
+      meta.counts[name] = await countDocs(name);
       const tr = document.createElement('tr');
       tr.innerHTML = '<td></td><td></td>';
       tr.children[0].textContent = label;
@@ -269,22 +330,20 @@ $('export-btn').addEventListener('click', async () => {
     let sigBytes = 0;
     let totalBytes = 0;
     const progress = log('');
-    await readPaged(recentWaybills, async (docs) => {
+    await readRecentWaybills(async (out) => {
       page++;
-      const out = docs.map(docOut);
       for (const d of out) {
         const sig = d.data.signatureData;
         if (typeof sig === 'string' && sig.length) { sigCount++; sigBytes += sig.length; }
       }
       const body = JSON.stringify({ docs: out });
       await save('waybills-' + String(page).padStart(4, '0'), body);
-      wb += docs.length;
+      wb += out.length;
       totalBytes += body.length;
       progress.textContent = `Путевые листы за 2 суток: ${wb} из ${meta.counts.waybills} (${Math.round(totalBytes / 1048576)} МБ)\n`;
-      return body.length;
     });
     // Пока шла выгрузка, водители могли создать новые листы — сверяем с обоими подсчётами.
-    const countNow = (await getCountFromServer(recentWaybills())).data().count;
+    const countNow = await countRecentRest();
     if (wb < Math.min(meta.counts.waybills, countNow)) {
       throw new Error(`Выгружено листов ${wb}, а в Firebase ${countNow}. Выгрузка не завершена — нажмите «Выгрузить» ещё раз`);
     }
