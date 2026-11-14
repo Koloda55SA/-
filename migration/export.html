@@ -65,8 +65,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, query, orderBy, limit, startAfter,
-  documentId, getCountFromServer, Timestamp,
+  getFirestore, collection, doc, getDocFromServer as getDoc, getDocsFromServer as getDocs,
+  query, where, orderBy, limit, startAfter, getCountFromServer, Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Тот же проект, что у старого сайта админки и приложения.
@@ -79,14 +79,22 @@ const app = initializeApp({
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Старые путевые листы не переносим (они остаются в Firebase как архив).
+// Берём только листы за последние двое суток: действующие (12 ч) и ожидающие
+// допуска — чтобы у водителя не пропал открытый лист и работал QR-код на нём.
+const RECENT_MS = 48 * 3600 * 1000;
+const recentWaybills = (...extra) => query(collection(db, 'waybills'),
+  where('createdAt', '>=', Timestamp.fromMillis(meta.waybillsSince)), orderBy('createdAt'), ...extra);
+
 const COLLECTIONS = [
   ['admins', 'Сотрудники'],
   ['drivers', 'Водители'],
-  ['waybills', 'Путевые листы'],
+  ['waybills', 'Путевые листы за 2 суток'],
   ['supportChats', 'Диалоги поддержки'],
   ['payments', 'Оплаты'],
   ['deletionRequests', 'Заявки на удаление'],
 ];
+const countQuery = name => (name === 'waybills' ? recentWaybills() : collection(db, name));
 const PBKDF2_ITER = 100000;   // как на сервере (cloudflare-api/src/auth.js)
 
 const $ = id => document.getElementById(id);
@@ -97,6 +105,7 @@ function log(text, cls) {
   if (cls) line.className = cls;
   line.textContent = text + '\n';
   logBox.appendChild(line);
+  return line;
 }
 
 function normalizePhone(raw) {
@@ -135,23 +144,39 @@ async function save(name, payload) {
   const res = await fetch('/save?name=' + encodeURIComponent(name), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: typeof payload === 'string' ? payload : JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Не удалось сохранить ' + name + ' (' + res.status + ')');
 }
 
-// Читаем коллекцию страницами по id документа.
-async function readPaged(col, pageSize, onPage) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Читаем запрос страницами — только с сервера (без кэша:
+// при обрыве связи кэш отдал бы пустой список вместо ошибки).
+// Листы с подписями тяжёлые: размер страницы подстраивается под объём ответа,
+// а при сбое страница повторяется с меньшим размером.
+async function readPaged(makeQuery, onPage) {
   let last = null;
+  let size = 50;
   for (;;) {
-    const q = last
-      ? query(col, orderBy(documentId()), startAfter(last), limit(pageSize))
-      : query(col, orderBy(documentId()), limit(pageSize));
-    const snap = await getDocs(q);
+    let snap;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        snap = await getDocs(last ? makeQuery(startAfter(last), limit(size)) : makeQuery(limit(size)));
+        break;
+      } catch (err) {
+        if (attempt >= 5) throw err;
+        size = Math.max(5, Math.floor(size / 2));
+        log(`Сбой чтения (${err.code || err.message}), повтор по ${size}…`);
+        await sleep(2000 * attempt);
+      }
+    }
     if (snap.empty) return;
-    await onPage(snap.docs);
+    const bytes = await onPage(snap.docs);
     last = snap.docs[snap.docs.length - 1];
-    if (snap.size < pageSize) return;
+    if (snap.size < size) return;
+    if (bytes > 8e6) size = Math.max(5, Math.floor(size / 2));
+    else if (bytes < 2e6 && size < 200) size = size * 2;
   }
 }
 
@@ -189,7 +214,8 @@ $('login-form').addEventListener('submit', async (e) => {
     // с тем же паролем. Сам пароль никуда не сохраняется — только его хэш.
     const hash = await hashPassword(password);
     $('password').value = '';
-    meta = { exportedAt: Date.now(), adminUid: cred.user.uid, adminPhone: phone, ...hash };
+    const t = Date.now();
+    meta = { exportedAt: t, waybillsSince: t - RECENT_MS, adminUid: cred.user.uid, adminPhone: phone, ...hash };
 
     $('login-card').hidden = true;
     $('work-card').hidden = false;
@@ -197,7 +223,7 @@ $('login-form').addEventListener('submit', async (e) => {
     const tbody = $('counts').querySelector('tbody');
     meta.counts = {};
     for (const [name, label] of COLLECTIONS) {
-      const c = await getCountFromServer(collection(db, name));
+      const c = await getCountFromServer(countQuery(name));
       meta.counts[name] = c.data().count;
       const tr = document.createElement('tr');
       tr.innerHTML = '<td></td><td></td>';
@@ -218,7 +244,13 @@ $('login-form').addEventListener('submit', async (e) => {
 $('export-btn').addEventListener('click', async () => {
   $('export-btn').disabled = true;
   const started = Date.now();
+  let ok = false;
   try {
+    // Начинаем с чистой папки: части прошлой (оборванной) выгрузки не смешаются.
+    const r = await fetch('/reset', { method: 'POST' });
+    if (!r.ok) throw new Error('Не удалось очистить папку выгрузки');
+    logBox.textContent = '';
+
     const admins = await getDocs(collection(db, 'admins'));
     await save('admins', { docs: admins.docs.map(docOut) });
     log('Сотрудники: ' + admins.size);
@@ -233,12 +265,32 @@ $('export-btn').addEventListener('click', async () => {
 
     let page = 0;
     let wb = 0;
-    await readPaged(collection(db, 'waybills'), 300, async (docs) => {
+    let sigCount = 0;
+    let sigBytes = 0;
+    let totalBytes = 0;
+    const progress = log('');
+    await readPaged(recentWaybills, async (docs) => {
       page++;
-      await save('waybills-' + String(page).padStart(4, '0'), { docs: docs.map(docOut) });
+      const out = docs.map(docOut);
+      for (const d of out) {
+        const sig = d.data.signatureData;
+        if (typeof sig === 'string' && sig.length) { sigCount++; sigBytes += sig.length; }
+      }
+      const body = JSON.stringify({ docs: out });
+      await save('waybills-' + String(page).padStart(4, '0'), body);
       wb += docs.length;
-      log('Путевые листы: ' + wb + ' из ' + meta.counts.waybills);
+      totalBytes += body.length;
+      progress.textContent = `Путевые листы за 2 суток: ${wb} из ${meta.counts.waybills} (${Math.round(totalBytes / 1048576)} МБ)\n`;
+      return body.length;
     });
+    // Пока шла выгрузка, водители могли создать новые листы — сверяем с обоими подсчётами.
+    const countNow = (await getCountFromServer(recentWaybills())).data().count;
+    if (wb < Math.min(meta.counts.waybills, countNow)) {
+      throw new Error(`Выгружено листов ${wb}, а в Firebase ${countNow}. Выгрузка не завершена — нажмите «Выгрузить» ещё раз`);
+    }
+    meta.waybillsExported = wb;
+    meta.signatures = { count: sigCount, bytes: sigBytes };
+    log(`Подписей: ${sigCount}, в среднем ${sigCount ? Math.round(sigBytes / sigCount / 1024) : 0} КБ`);
 
     const chats = await getDocs(collection(db, 'supportChats'));
     await save('support', { docs: await withSub(chats.docs, 'messages', 'messages') });
@@ -257,11 +309,12 @@ $('export-btn').addEventListener('click', async () => {
     meta.finishedAt = Date.now();
     await save('meta', meta);
     log('Готово за ' + Math.round((Date.now() - started) / 1000) + ' с. Можно закрыть страницу.', 'ok');
+    ok = true;
   } catch (err) {
     log('Ошибка: ' + (err.message || err), 'err');
-    $('export-btn').disabled = false;
+    $('export-btn').disabled = false;   // вход сохраняется — можно сразу повторить
   } finally {
-    await signOut(auth).catch(() => {});
+    if (ok) await signOut(auth).catch(() => {});
   }
 });
 </script>

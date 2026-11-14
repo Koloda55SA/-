@@ -100,6 +100,11 @@ for (const { id, data: a } of read('admins').docs) {
   const role = ['admin', 'medic', 'mechanic'].includes(a.role) ? a.role : 'admin';
   let phone = normalizePhone(a.phone);
   if (!isValidPhone(phone) && id === meta.adminUid) phone = meta.adminPhone;
+  // Номер из служебного email входа: <цифры>@asempro.admin
+  if (!isValidPhone(phone)) {
+    const digits = s(a.email).split('@')[0].replace(/\D/g, '');
+    if (digits) phone = normalizePhone(digits);
+  }
   if (!isValidPhone(phone)) { warn(`сотрудник ${id} (${s(a.fullName) || 'без имени'}): нет номера телефона — пропущен`); continue; }
   if (staffPhones.has(phone)) { warn(`сотрудник ${id}: номер ${phone} уже занят другим сотрудником — пропущен`); continue; }
   staffPhones.add(phone);
@@ -293,6 +298,9 @@ for (const { data: r } of read('deletions').docs) {
 const staffCount = rows.users.filter(u => u.scope === 'staff').length;
 console.log(`Выгрузка от ${new Date(meta.exportedAt).toLocaleString('ru-RU')} (подготовка ${Math.round((Date.now() - t0) / 1000)} с)`);
 console.log(`  в Firebase: ${Object.entries(meta.counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+if (meta.waybillsSince) {
+  console.log(`  путевые листы: только созданные с ${new Date(meta.waybillsSince).toLocaleString('ru-RU')} (старые остаются в Firebase)`);
+}
 console.log(`  к переносу: сотрудники ${staffCount}, водители ${driverCount}, листы ${rows.waybills.length}, ` +
   `диалоги ${rows.support_chats.length} (сообщений ${rows.support_messages.length}), оплаты ${rows.payments.length}, ` +
   `заметки ${rows.driver_notes.length}, заявки на удаление ${rows.deletion_requests.length}`);

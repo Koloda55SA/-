@@ -25,13 +25,25 @@ http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/save') {
-    // Принимаем только со своей страницы.
-    if (!allowedOrigins.includes(req.headers.origin || '')) {
-      res.writeHead(403);
-      res.end();
-      return;
+  // Принимаем запросы только со своей страницы.
+  if (req.method === 'POST' && !allowedOrigins.includes(req.headers.origin || '')) {
+    res.writeHead(403);
+    res.end();
+    return;
+  }
+
+  // Новая выгрузка: убрать части прошлой (staff-passwords.txt не трогаем).
+  if (req.method === 'POST' && url.pathname === '/reset') {
+    for (const f of fs.readdirSync(outDir)) {
+      if (f.endsWith('.json')) fs.rmSync(path.join(outDir, f));
     }
+    console.log('папка выгрузки очищена');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"ok":true}');
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/save') {
     const name = url.searchParams.get('name') || '';
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(name)) {
       res.writeHead(400);
