@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,6 +24,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  // Вкладки создаются при первом открытии и дальше не пересоздаются
+  // (раньше каждая смена вкладки заново грузила данные и подписки).
+  final Set<int> _visited = {0};
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +39,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      body: pages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          for (var i = 0; i < pages.length; i++)
+            _visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+        ],
+      ),
       bottomNavigationBar: _BottomBar(
         index: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: (i) => setState(() {
+          _currentIndex = i;
+          _visited.add(i);
+        }),
       ),
     );
   }
@@ -60,7 +73,10 @@ class _DashboardPageState extends State<_DashboardPage> {
   String? _activeWaybillId;
   bool _loadingActive = true;
   int _usedQuota = 0;
+  bool _quotaLoaded = false;
   bool _requestPending = false;
+  bool _sendingQuotaRequest = false;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _activeSub;
 
   /// Лимит выпуска ЭПЛ для водителя (по умолчанию 60).
   int get _quotaLimit {
@@ -75,8 +91,59 @@ class _DashboardPageState extends State<_DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _refreshActive();
+    _listenActive();
     _loadQuota();
+  }
+
+  @override
+  void dispose() {
+    _activeSub?.cancel();
+    super.dispose();
+  }
+
+  /// Лист с истёкшим сроком (12 ч) больше не считается действующим.
+  static bool _isExpired(Map<String, dynamic>? w) {
+    if (w == null || w['status'] != 'active') return false;
+    final exp = w['expiresAt'];
+    return exp is Timestamp && exp.toDate().isBefore(DateTime.now());
+  }
+
+  static int _createdMs(DocumentSnapshot<Map<String, dynamic>> d) {
+    final t = d.data()?['createdAt'];
+    // Только что созданный (ещё не подтверждён сервером) — самый новый.
+    return t is Timestamp ? t.millisecondsSinceEpoch : DateTime.now().millisecondsSinceEpoch + 1;
+  }
+
+  /// Живая подписка на текущий лист водителя: запрос на допуск (pending)
+  /// или выпущенный лист (active). Отметки медика и мастера видны сразу.
+  void _listenActive() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _loadingActive = false;
+      return;
+    }
+    _activeSub = FirebaseFirestore.instance
+        .collection('waybills')
+        .where('authUid', isEqualTo: user.uid)
+        .where('status', whereIn: ['pending', 'active'])
+        .limit(20)
+        .snapshots()
+        .listen((snap) {
+      QueryDocumentSnapshot<Map<String, dynamic>>? best;
+      for (final d in snap.docs) {
+        if (_isExpired(d.data())) continue;
+        if (best == null || _createdMs(d) > _createdMs(best)) best = d;
+      }
+      if (!mounted) return;
+      setState(() {
+        _activeWaybill = best?.data();
+        _activeWaybillId = best?.id;
+        _loadingActive = false;
+      });
+    }, onError: (e) {
+      debugPrint('Active waybill listen error: $e');
+      if (mounted) setState(() => _loadingActive = false);
+    });
   }
 
   Future<void> _loadQuota() async {
@@ -103,6 +170,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       setState(() {
         _usedQuota = used;
         _requestPending = pending.docs.isNotEmpty;
+        _quotaLoaded = true;
       });
     } catch (e) {
       debugPrint('Quota load error: $e');
@@ -111,7 +179,8 @@ class _DashboardPageState extends State<_DashboardPage> {
 
   Future<void> _requestMoreQuota() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || _sendingQuotaRequest || _requestPending) return;
+    _sendingQuotaRequest = true;
     try {
       await FirebaseFirestore.instance.collection('quotaRequests').add({
         'driverId': widget.driverDocId,
@@ -137,10 +206,15 @@ class _DashboardPageState extends State<_DashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка отправки заявки: $e'), backgroundColor: AppTheme.danger),
       );
+    } finally {
+      _sendingQuotaRequest = false;
     }
   }
 
   Future<void> _onCreateWaybill() async {
+    // Лимит проверяем по актуальному счётчику, а не по нулю до загрузки.
+    if (!_quotaLoaded) await _loadQuota();
+    if (!mounted) return;
     if (_quotaExhausted) {
       await _showQuotaDialog();
       return;
@@ -154,8 +228,22 @@ class _DashboardPageState extends State<_DashboardPage> {
         ),
       ),
     );
-    await _refreshActive();
     await _loadQuota();
+  }
+
+  Future<void> _openPendingRequest() async {
+    final id = _activeWaybillId;
+    if (id == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WaybillScreen(
+          driverData: widget.driverData,
+          driverDocId: widget.driverDocId,
+          existingRequestId: id,
+        ),
+      ),
+    );
   }
 
   Future<void> _showQuotaDialog() async {
@@ -181,33 +269,6 @@ class _DashboardPageState extends State<_DashboardPage> {
         ],
       ),
     );
-  }
-
-  Future<void> _refreshActive() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final snap = await FirebaseFirestore.instance
-          .collection('waybills')
-          .where('authUid', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'active')
-          .limit(1)
-          .get();
-      if (!mounted) return;
-      setState(() {
-        if (snap.docs.isNotEmpty) {
-          _activeWaybill = snap.docs.first.data();
-          _activeWaybillId = snap.docs.first.id;
-        } else {
-          _activeWaybill = null;
-          _activeWaybillId = null;
-        }
-        _loadingActive = false;
-      });
-    } catch (e) {
-      debugPrint('Active waybill check error: $e');
-      if (mounted) setState(() => _loadingActive = false);
-    }
   }
 
   Future<void> _closeWaybill() async {
@@ -240,14 +301,16 @@ class _DashboardPageState extends State<_DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Истёкший за время показа экрана лист не показываем как действующий.
+    final current = _isExpired(_activeWaybill) ? null : _activeWaybill;
     final fullName = (widget.driverData['fullName'] ?? '').toString();
     final firstName = fullName.split(' ').length > 1 ? fullName.split(' ')[1] : fullName;
 
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
-          await _refreshActive();
           await _loadQuota();
+          if (mounted) setState(() {}); // перепроверить срок действия листа
         },
         color: AppTheme.primary,
         child: ListView(
@@ -342,13 +405,15 @@ class _DashboardPageState extends State<_DashboardPage> {
                   child: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
                 ),
               )
-            else if (_activeWaybill != null)
+            else if (current != null && current['status'] == 'pending')
+              _PendingWaybillCard(data: current, onTap: _openPendingRequest)
+            else if (current != null)
               _ActiveWaybillCard(
-                data: _activeWaybill!,
+                data: current,
                 onOpen: () {
                   showWaybillQrSheet(
                     context,
-                    data: _activeWaybill!,
+                    data: current,
                     docId: _activeWaybillId ?? '',
                   );
                 },
@@ -603,6 +668,62 @@ class _ActiveWaybillCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Запрос на допуск отправлен — ждём отметок медика и мастера.
+class _PendingWaybillCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback onTap;
+
+  const _PendingWaybillCard({required this.data, required this.onTap});
+
+  Widget _mark(String label, String prefix) {
+    final ok = data['${prefix}Status'] == 'ok';
+    return Row(
+      children: [
+        Icon(ok ? Icons.check_circle : Icons.schedule,
+            size: 16, color: ok ? AppTheme.success : AppTheme.textMuted),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        Text(ok ? 'Допущен' : 'Ожидает',
+            style: TextStyle(fontSize: 13, color: ok ? AppTheme.success : AppTheme.textMuted)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AppCard(
+        padding: const EdgeInsets.all(18),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                StatusChip(label: 'ОЖИДАЕТ ДОПУСКА', color: AppTheme.primary, icon: Icons.hourglass_top),
+                Spacer(),
+                Icon(Icons.chevron_right, color: AppTheme.textMuted),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _mark('Медосмотр', 'med'),
+            const SizedBox(height: 8),
+            _mark('Техконтроль', 'tech'),
+            const SizedBox(height: 12),
+            const Text(
+              'Подойдите к медику и мастеру. Путевой лист появится здесь после обеих отметок.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }

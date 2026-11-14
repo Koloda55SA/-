@@ -1,6 +1,12 @@
 // AsemPro - Main Application Logic
 
+// Разделы, доступные медику и мастеру. Остальное — только администратору.
+const STAFF_SECTIONS = ['checks'];
+
 function showSection(sectionName) {
+    if (typeof Auth !== 'undefined' && Auth.role !== 'admin' && !STAFF_SECTIONS.includes(sectionName)) {
+        sectionName = 'checks';
+    }
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     const target = document.getElementById(`section-${sectionName}`);
     if (target) target.classList.add('active');
@@ -9,6 +15,8 @@ function showSection(sectionName) {
     });
     const titles = {
         'menu': 'Меню',
+        'checks': 'Допуск на линию',
+        'staff': 'Сотрудники',
         'drivers': 'Водители',
         'add-driver': 'Новый водитель',
         'waybills': 'Путевые листы',
@@ -43,6 +51,14 @@ function showSection(sectionName) {
     // Бухгалтерия — таблица оплат за выбранный месяц
     if (sectionName === 'accounting' && typeof Accounting !== 'undefined') {
         Accounting.load();
+    }
+
+    if (sectionName === 'checks' && typeof Checks !== 'undefined') {
+        Checks.load();
+    }
+
+    if (sectionName === 'staff' && typeof Staff !== 'undefined') {
+        Staff.load();
     }
 }
 
@@ -107,10 +123,23 @@ function initTheme() {
     updateThemeUI(saved);
 }
 
-// Обновление статистики на «Меню». Водителей считаем из живого кэша
-// (Drivers.drivers держится в реальном времени), путевые листы — дешёвым
-// серверным агрегатом count(), чтобы не выкачивать всю коллекцию.
-async function updateDashboard() {
+// Обновление статистики на «Меню». Вызывается из realtime-подписок водителей
+// и путевых листов, поэтому:
+//   - считаем только когда «Меню» открыто (иначе — при следующем заходе);
+//   - схлопываем частые вызовы в один (debounce), чтобы не долбить сервер
+//     агрегатами count() на каждое изменение.
+let _dashboardTimer = null;
+function updateDashboard() {
+    const menu = document.getElementById('section-menu');
+    if (!menu || !menu.classList.contains('active')) return;
+    if (typeof Auth !== 'undefined' && Auth.role !== 'admin') return;
+    clearTimeout(_dashboardTimer);
+    _dashboardTimer = setTimeout(_updateDashboardNow, 400);
+}
+
+// Водителей считаем из живого кэша (Drivers.drivers держится в реальном
+// времени), путевые листы — дешёвым серверным агрегатом count().
+async function _updateDashboardNow() {
     try {
         const today = new Date().toLocaleDateString('ru-RU');
         const setStat = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -152,6 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Settings.init();
     if (typeof Support !== 'undefined') Support.init();
     if (typeof Accounting !== 'undefined') Accounting.init();
+    if (typeof Staff !== 'undefined') Staff.init();
 
     document.querySelectorAll('.sidebar-menu li').forEach(item => {
         item.addEventListener('click', () => {

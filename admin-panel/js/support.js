@@ -36,6 +36,7 @@ const Support = {
         if (Support._listUnsub) return;
         Support._listUnsub = db.collection('supportChats')
             .orderBy('lastMessageAt', 'desc')
+            .limit(200)
             .onSnapshot(snapshot => {
                 Support._chats = [];
                 snapshot.forEach(doc => Support._chats.push({ id: doc.id, ...doc.data() }));

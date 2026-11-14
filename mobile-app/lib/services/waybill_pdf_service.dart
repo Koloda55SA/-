@@ -13,7 +13,7 @@ class WaybillPdfService {
   static pw.Font? _italic;
   static pw.MemoryImage? _eagle;
 
-  // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
+  // Только для старых листов (до появления отметок медика/мастера на сайте).
   static const Map<String, String> _medDefault = {
     'name': 'Самышина Елена Александровна',
     'serial': 'b8d46c0e277c1e06a40c8e3e253d9e6c',
@@ -100,6 +100,17 @@ class WaybillPdfService {
     return v.toString();
   }
 
+  /// Данные отметки о допуске (prefix = 'med' | 'tech').
+  /// В новых листах (есть medStatus/techStatus) — только данные сотрудника,
+  /// который реально отметил допуск на сайте. Значения по умолчанию
+  /// используются лишь для старых листов, выпущенных до появления отметок.
+  static String _signer(Map<String, dynamic> d, String prefix, String field, Map<String, String> legacy) {
+    const keys = {'name': 'Name', 'serial': 'CertSerial', 'issued': 'Issued', 'expires': 'Expires'};
+    final key = '$prefix${keys[field]}';
+    if (d['${prefix}Status'] != null) return _v(d, key);
+    return _vne(d, key, legacy[field]!);
+  }
+
   static pw.Widget _build(Map<String, dynamic> d) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -120,10 +131,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'medTime'),
           signerLabel: 'Медицинский работник',
-          signerName: _vne(d, 'medName', _medDefault['name']!),
-          signerSerial: _vne(d, 'medCertSerial', _medDefault['serial']!),
-          signerIssued: _vne(d, 'medIssued', _medDefault['issued']!),
-          signerExpires: _vne(d, 'medExpires', _medDefault['expires']!),
+          signerName: _signer(d, 'med', 'name', _medDefault),
+          signerSerial: _signer(d, 'med', 'serial', _medDefault),
+          signerIssued: _signer(d, 'med', 'issued', _medDefault),
+          signerExpires: _signer(d, 'med', 'expires', _medDefault),
         ),
         pw.SizedBox(height: 2),
         _examBlock(
@@ -132,10 +143,10 @@ class WaybillPdfService {
           date: _v(d, 'date'),
           time: _v(d, 'techTime'),
           signerLabel: 'Контролёр тех.сост. ТС',
-          signerName: _vne(d, 'techName', _techDefault['name']!),
-          signerSerial: _vne(d, 'techCertSerial', _techDefault['serial']!),
-          signerIssued: _vne(d, 'techIssued', _techDefault['issued']!),
-          signerExpires: _vne(d, 'techExpires', _techDefault['expires']!),
+          signerName: _signer(d, 'tech', 'name', _techDefault),
+          signerSerial: _signer(d, 'tech', 'serial', _techDefault),
+          signerIssued: _signer(d, 'tech', 'issued', _techDefault),
+          signerExpires: _signer(d, 'tech', 'expires', _techDefault),
         ),
         pw.SizedBox(height: 3),
         _shiftStartAndRelease(d),

@@ -34,19 +34,18 @@ const Requests = {
         if (!tbody) return;
         if (Requests._unsub) return;
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Загрузка…</td></tr>';
+        // Последние 100 заявок — старые обработанные не тянем каждый раз.
         Requests._unsub = db.collection('quotaRequests')
             .orderBy('requestedAt', 'desc')
+            .limit(100)
             .onSnapshot(snapshot => {
                 const tb = document.getElementById('requests-tbody');
                 if (!tb) return;
-                tb.innerHTML = '';
                 if (snapshot.empty) {
-                    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:32px;">Заявок пока нет</td></tr>';
+                    tb.innerHTML = '<tr><td colspan="6" class="table-empty">Заявок пока нет</td></tr>';
                     return;
                 }
-                snapshot.forEach(doc => {
-                    tb.insertAdjacentHTML('beforeend', Requests.renderRow(doc.id, doc.data() || {}));
-                });
+                tb.innerHTML = snapshot.docs.map(doc => Requests.renderRow(doc.id, doc.data() || {})).join('');
             }, e => {
                 console.error('Error loading quota requests:', e);
                 const tb = document.getElementById('requests-tbody');

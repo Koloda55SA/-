@@ -137,7 +137,18 @@
             return `${a}.${b}~`;
         }
 
-        // Данные усиленной квалифицированной ЭП по умолчанию (если не заданы в документе)
+        // Отметка о допуске: кто и с каким сертификатом её поставил.
+        // Новые листы (есть medStatus/techStatus) — только данные сотрудника,
+        // который реально отметил допуск. Значения MED/TECH ниже используются
+        // лишь для старых листов, выпущенных до появления отметок.
+        function signer(d, prefix, legacy) {
+            if (d[prefix + 'Status']) {
+                return [d[prefix + 'Name'], d[prefix + 'CertSerial'], d[prefix + 'Issued'], d[prefix + 'Expires']];
+            }
+            return [d[prefix + 'Name'] || legacy.name, d[prefix + 'CertSerial'] || legacy.serial,
+                    d[prefix + 'Issued'] || legacy.issued, d[prefix + 'Expires'] || legacy.expires];
+        }
+
         const MED = {
             name: 'Самышина Елена Александровна',
             serial: 'b8d46c0e277c1e06a40c8e3e253d9e6c',
@@ -263,8 +274,8 @@
                 </tr>
             </table>
 
-            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', d.medName || MED.name, d.medCertSerial || MED.serial, d.medIssued || MED.issued, d.medExpires || MED.expires)}
-            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', d.techName || TECH.name, d.techCertSerial || TECH.serial, d.techIssued || TECH.issued, d.techExpires || TECH.expires)}
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', ...signer(d, 'med', MED))}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', ...signer(d, 'tech', TECH))}
 
             <table style="margin-top:3px" class="nob"><tr>
                 <td class="nob" style="width:70%;padding:0;padding-right:8px">
@@ -318,6 +329,13 @@
         }
 
         function render(d, id) {
+            // Невыпущенный лист не показываем как действующий документ.
+            const notIssued = {
+                pending: 'Путевой лист ещё не выпущен: водитель ожидает допуска медика и мастера.',
+                rejected: 'Водитель не допущен к выезду. Путевой лист не выпущен.',
+                cancelled: 'Запрос на путевой лист отменён.',
+            };
+            if (notIssued[d.status]) { renderState(notIssued[d.status]); return; }
             const closed = d.status === 'closed';
             const badge = closed
                 ? '<span class="badge closed">Закрыт</span>'

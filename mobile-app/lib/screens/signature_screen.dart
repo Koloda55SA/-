@@ -1,6 +1,7 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../theme/app_theme.dart';
 
@@ -32,10 +33,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
     }
 
     try {
-      final boundary = _repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final pngBytes = byteData!.buffer.asUint8List();
+      final pngBytes = await _exportCropped();
       if (mounted) Navigator.pop(context, pngBytes);
     } catch (e) {
       if (mounted) {
@@ -44,6 +42,37 @@ class _SignatureScreenState extends State<SignatureScreen> {
         );
       }
     }
+  }
+
+  /// Рисует только штрихи, обрезая пустое поле вокруг подписи. Раньше в PNG
+  /// попадала вся (почти пустая) область рисования, и в PDF подпись
+  /// получалась крошечной.
+  Future<Uint8List> _exportCropped() async {
+    const scale = 3.0;
+    const pad = 6.0;
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = -double.infinity, maxY = -double.infinity;
+    for (final stroke in _strokes) {
+      for (final p in stroke) {
+        minX = math.min(minX, p.dx);
+        minY = math.min(minY, p.dy);
+        maxX = math.max(maxX, p.dx);
+        maxY = math.max(maxY, p.dy);
+      }
+    }
+    final w = (maxX - minX) + pad * 2;
+    final h = (maxY - minY) + pad * 2;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.scale(scale);
+    canvas.translate(pad - minX, pad - minY);
+    _SignaturePainter(strokes: _strokes).paint(canvas, Size(w, h));
+    final image = await recorder
+        .endRecording()
+        .toImage((w * scale).ceil(), (h * scale).ceil());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
   @override

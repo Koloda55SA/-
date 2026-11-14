@@ -57,8 +57,8 @@ const Drivers = {
                 Drivers.addDriver();
             }
         });
-        // Автозаполнение организации из настроек по умолчанию
-        Drivers._prefillOrgFromSettings();
+        // Организация из настроек подставляется при открытии формы (newDriver),
+        // когда админ уже вошёл — до входа чтение настроек запрещено правилами.
     },
 
     // Переводит форму в режим создания нового водителя.
@@ -170,6 +170,8 @@ const Drivers = {
     _normalizePhone(raw) {
         let phone = String(raw || '').replace(/[\s\(\)\-]/g, '');
         if (phone.startsWith('8') && phone.length === 11) phone = '+7' + phone.substring(1);
+        // 10 цифр без кода страны (9991234567) — российский номер.
+        if (/^9\d{9}$/.test(phone)) phone = '+7' + phone;
         if (!phone.startsWith('+')) phone = '+' + phone;
         return phone;
     },
@@ -254,9 +256,12 @@ const Drivers = {
         });
     },
 
+    // Поиск перерисовывает таблицу не на каждую букву, а после паузы в наборе.
+    _filterTimer: null,
     filterDrivers(query) {
         Drivers._searchQuery = query || '';
-        Drivers.renderList();
+        clearTimeout(Drivers._filterTimer);
+        Drivers._filterTimer = setTimeout(Drivers.renderList, 120);
     },
 
     renderList() {
@@ -265,15 +270,13 @@ const Drivers = {
         const query = Drivers._searchQuery || '';
         const list = Drivers.drivers.filter(d => Drivers._matches(d, query));
 
-        tbody.innerHTML = '';
         if (Drivers.drivers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Нет зарегистрированных водителей</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Нет зарегистрированных водителей</td></tr>';
         } else if (list.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:32px;">Ничего не найдено по запросу «${Drivers._esc(query)}»</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="table-empty">Ничего не найдено по запросу «${Drivers._esc(query)}»</td></tr>`;
         } else {
-            list.forEach(driver => {
-                tbody.insertAdjacentHTML('beforeend', Drivers.renderRow(driver));
-            });
+            // Одно присваивание вместо вставки по строке — браузер перерисовывает таблицу один раз.
+            tbody.innerHTML = list.map(Drivers.renderRow).join('');
         }
 
         const countEl = document.getElementById('drivers-search-count');

@@ -79,28 +79,15 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       );
       await user.reauthenticateWithCredential(credential);
 
-      // Create deletion request in Firestore (for admin to clean up data)
+      // Заявка на удаление данных: путевые листы и профиль водителя удаляет
+      // администратор (водителю правила это запрещают — раньше из-за этого
+      // удаление аккаунта всегда падало с permission-denied).
       await FirebaseFirestore.instance.collection('deletionRequests').add({
         'uid': user.uid,
         'email': user.email,
         'requestedAt': FieldValue.serverTimestamp(),
         'status': 'pending',
       });
-
-      // Delete user's waybills
-      final waybills = await FirebaseFirestore.instance
-          .collection('waybills')
-          .where('driverId', isEqualTo: user.uid)
-          .get();
-      for (final doc in waybills.docs) {
-        await doc.reference.delete();
-      }
-
-      // Delete driver profile
-      await FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(user.uid)
-          .delete();
 
       // Delete Firebase Auth account
       await user.delete();
@@ -115,7 +102,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       }
     } on FirebaseAuthException catch (e) {
       String msg = 'Ошибка удаления';
-      if (e.code == 'wrong-password') {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         msg = 'Неверный пароль';
       } else if (e.code == 'requires-recent-login') {
         msg = 'Войдите заново и повторите попытку';

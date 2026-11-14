@@ -29,11 +29,16 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
   DocumentReference<Map<String, dynamic>> get _chatRef =>
       FirebaseFirestore.instance.collection('supportChats').doc(widget.driverDocId);
 
+  // Подписка создаётся один раз, а не на каждой перерисовке экрана.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _messages =
+      _chatRef.collection('messages').orderBy('createdAt', descending: false).snapshots();
+
   @override
   void initState() {
     super.initState();
     // Сбрасываем счётчик непрочитанных водителем при открытии чата.
-    _chatRef.set({'unreadForDriver': 0}, SetOptions(merge: true)).catchError((_) {});
+    // update, а не set: не создаём пустой диалог у водителя, который ещё не писал.
+    _chatRef.update({'unreadForDriver': 0}).catchError((_) {});
   }
 
   @override
@@ -105,10 +110,7 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
           children: [
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _chatRef
-                    .collection('messages')
-                    .orderBy('createdAt', descending: false)
-                    .snapshots(),
+                stream: _messages,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
                     return const Center(child: CircularProgressIndicator(color: AppTheme.primary));

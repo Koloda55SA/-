@@ -2,18 +2,77 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAdmin() {
-      return request.auth != null &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Админы. Создание первого админа — через Firebase Console.
+    // Сотрудники хранятся в admins/{uid}. Поле role:
+    //   'admin'    — владелец/администратор (по умолчанию, если role не задан);
+    //   'medic'    — медицинский работник (предрейсовый медосмотр);
+    //   'mechanic' — мастер / контролёр технического состояния ТС.
+    function isStaff() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function staffRole() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('role', 'admin');
+    }
+
+    function isAdmin() {
+      return isStaff() && staffRole() == 'admin';
+    }
+
+    function isRole(r) {
+      return isStaff() && staffRole() == r;
+    }
+
+    // ── Поля отметок медика и мастера в путевом листе ──
+    function medKeys() {
+      return ['medStatus', 'medConfirmedAt', 'medConfirmedBy', 'medName',
+              'medCertSerial', 'medIssued', 'medExpires', 'medTime'];
+    }
+    function techKeys() {
+      return ['techStatus', 'techConfirmedAt', 'techConfirmedBy', 'techName',
+              'techCertSerial', 'techIssued', 'techExpires', 'techTime'];
+    }
+    // Поля, которые проставляются при выпуске ЭПЛ (после обеих отметок).
+    function activationKeys() {
+      return ['status', 'date', 'dateFormatted', 'shiftStart', 'departureTime',
+              'shiftEnd', 'shiftEndDate', 'expiresAt', 'activatedAt'];
+    }
+    function rejectKeys() {
+      return ['status', 'rejectedAt', 'rejectedBy', 'rejectedRole', 'rejectReason'];
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Отметка сотрудника (prefix = 'med' | 'tech') в ожидающем путевом листе:
+    //   - лист ещё ждёт допуска и этот сотрудник его ещё не отмечал;
+    //   - меняются только свои поля (+ выпуск/отказ);
+    //   - отметка записана от своего uid и серверным временем;
+    //   - «active» можно поставить, только если вторая сторона уже допустила.
+    function staffMark(prefix, myKeys, otherStatusKey) {
+      let n = request.resource.data;
+      let myStatus = n.get(prefix + 'Status', '');
+      let otherOk = resource.data.get(otherStatusKey, '') == 'ok';
+      return resource.data.get('status', '') == 'pending' &&
+        !resource.data.keys().hasAny([prefix + 'Status']) &&
+        changedKeys().hasOnly(myKeys.concat(activationKeys()).concat(rejectKeys())) &&
+        n.get(prefix + 'ConfirmedBy', '') == request.auth.uid &&
+        n.get(prefix + 'ConfirmedAt', null) == request.time &&
+        (
+          (myStatus == 'ok' && n.status == 'pending' && !otherOk) ||
+          (myStatus == 'ok' && n.status == 'active' && otherOk) ||
+          (myStatus == 'rejected' && n.status == 'rejected')
+        );
+    }
+
+    // Админы и сотрудники. Создание первого админа — через Firebase Console.
     match /admins/{adminId} {
-      allow read: if isAuthenticated() && request.auth.uid == adminId;
+      allow get: if (isAuthenticated() && request.auth.uid == adminId) || isAdmin();
       allow list: if isAdmin();
       allow write: if isAdmin();
     }
@@ -22,7 +81,11 @@ service cloud.firestore {
     // Doc ID водителя = его Firebase Auth UID, поэтому достаточно сравнить с request.auth.uid.
     match /drivers/{driverId} {
       allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == driverId);
-      allow list: if isAdmin();
+      // Водитель может найти свою старую запись по authUid (fallback в приложении).
+      allow list: if isAdmin() ||
+                    (isAuthenticated() &&
+                     resource.data.authUid == request.auth.uid &&
+                     request.query.limit <= 1);
       allow create, update, delete: if isAdmin();
 
       // CRM-заметки по водителю — только админ.
@@ -52,28 +115,57 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Путевые листы:
-    //   - чтение: админ или владелец (по authUid в документе)
-    //   - список: админ — без ограничений; водитель — только запрос с фильтром
-    //     по своему authUid (rules не выполнят запрос, если фильтра нет, потому
-    //     что иначе попадутся документы чужих водителей)
-    //   - создание: только сам водитель и только для своего authUid
-    //   - обновление: админ или владелец (например, закрытие смены)
-    //   - удаление: только админ
+    // Путевые листы. Жизненный цикл:
+    //   pending  — водитель запросил допуск, ждёт медика и мастера;
+    //   active   — медик и мастер оба допустили, ЭПЛ выпущен;
+    //   rejected — медик или мастер не допустил;
+    //   closed   — смена закрыта; cancelled — водитель отменил запрос.
     match /waybills/{waybillId} {
       // get разрешён всем: QR-код на печатном ЭПЛ ведёт на публичную страницу
       // просмотра по id документа (id случайный, перебор невозможен; те же данные
       // уже напечатаны на самом листе).
       allow get: if true;
+
+      // Список: админ — всё; водитель — только свои листы (запрос обязан
+      // фильтровать по authUid); медик/мастер — только ожидающие допуска.
       allow list: if isAdmin() ||
-                    (isAuthenticated() && request.query.limit <= 100);
+                    (isAuthenticated() &&
+                     resource.data.authUid == request.auth.uid &&
+                     request.query.limit <= 100) ||
+                    ((isRole('medic') || isRole('mechanic')) &&
+                     resource.data.status == 'pending' &&
+                     request.query.limit <= 200);
+
+      // Создание: только сам водитель, только запросом на допуск (pending)
+      // и без отметок медика/мастера и времён выпуска.
       allow create: if isAuthenticated() &&
                        request.resource.data.keys().hasAll(
                          ['driverId', 'authUid', 'waybillNumber', 'date', 'driverName']
                        ) &&
-                       request.resource.data.authUid == request.auth.uid;
-      allow update: if isAdmin() ||
-                       (isAuthenticated() && resource.data.authUid == request.auth.uid);
+                       request.resource.data.authUid == request.auth.uid &&
+                       request.resource.data.status == 'pending' &&
+                       !request.resource.data.keys().hasAny(
+                         medKeys().concat(techKeys()).concat(
+                           ['shiftStart', 'departureTime', 'shiftEnd', 'shiftEndDate',
+                            'expiresAt', 'activatedAt'])
+                       );
+
+      allow update: if
+        // Водитель: закрыть свою смену или отменить свой запрос на допуск.
+        (isAuthenticated() && resource.data.authUid == request.auth.uid &&
+          changedKeys().hasOnly(['status', 'closedAt']) &&
+          ((resource.data.status == 'active' && request.resource.data.status == 'closed') ||
+           (resource.data.status == 'pending' && request.resource.data.status == 'cancelled'))) ||
+        // Медик и мастер: только свои отметки.
+        (isRole('medic') && staffMark('med', medKeys(), 'techStatus')) ||
+        (isRole('mechanic') && staffMark('tech', techKeys(), 'medStatus')) ||
+        // Админ: служебные правки, но не отметки медика/мастера и не выпуск.
+        (isAdmin() &&
+          !changedKeys().hasAny(medKeys().concat(techKeys()).concat(
+            ['shiftStart', 'departureTime', 'expiresAt', 'activatedAt'])) &&
+          (request.resource.data.get('status', '') != 'active' ||
+           resource.data.get('status', '') == 'active'));
+
       allow delete: if isAdmin();
     }
 
@@ -109,11 +201,15 @@ service cloud.firestore {
     }
 
     // Счётчик выпущенных ЭПЛ для контроля лимита (60 на квоту).
-    // Doc ID = Firebase Auth UID водителя. Водитель ведёт свой счётчик,
-    // админ может читать для статистики.
+    // Doc ID = Firebase Auth UID водителя. Водитель может только увеличить
+    // свой счётчик на 1 (сбросить или уменьшить — нет); админ — полный доступ.
     match /driverCounters/{uid} {
       allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
-      allow write: if isAuthenticated() && request.auth.uid == uid;
+      allow create: if isAuthenticated() && request.auth.uid == uid &&
+                       request.resource.data.count == 1;
+      allow update: if isAuthenticated() && request.auth.uid == uid &&
+                       request.resource.data.count == resource.data.get('count', 0) + 1;
+      allow write: if isAdmin();
     }
 
     // Заявки на дополнительные ЭПЛ (+60). Создаёт водитель для себя,
@@ -125,7 +221,9 @@ service cloud.firestore {
       allow get: if isAdmin() ||
                     (isAuthenticated() && resource.data.authUid == request.auth.uid);
       allow list: if isAdmin() ||
-                    (isAuthenticated() && request.query.limit <= 100);
+                    (isAuthenticated() &&
+                     resource.data.authUid == request.auth.uid &&
+                     request.query.limit <= 100);
       allow update: if isAdmin();
     }
 

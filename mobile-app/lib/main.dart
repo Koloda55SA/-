@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -26,14 +27,42 @@ void main() async {
   runApp(const AsemProApp());
 }
 
-class AsemProApp extends StatelessWidget {
+/// Корневой навигатор: при выходе из аккаунта закрываем все экраны,
+/// открытые поверх главного (настройки, удаление аккаунта и т.п.).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+class AsemProApp extends StatefulWidget {
   const AsemProApp({super.key});
+
+  @override
+  State<AsemProApp> createState() => _AsemProAppState();
+}
+
+class _AsemProAppState extends State<AsemProApp> {
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'AsemPro',
       debugShowCheckedModeBanner: false,
+      navigatorKey: rootNavigatorKey,
       theme: AppTheme.dark(),
       home: const AuthGate(),
     );
@@ -73,6 +102,10 @@ class AuthGate extends StatelessWidget {
             }
             final active = data['active'];
             if (active == false) {
+              // Деактивирован — убираем открытые поверх экраны (в т.ч. создание ЭПЛ).
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+              });
               return const _BlockedScreen();
             }
             return HomeScreen(driverData: data, driverDocId: user.uid);
@@ -97,6 +130,8 @@ class _DriverProfileFallback extends StatelessWidget {
           .limit(1)
           .get(),
       builder: (context, snap) {
+        // Ошибка (нет прав / нет сети) — не держим вечный сплэш без выхода.
+        if (snap.hasError) return const _ProfileMissingScreen();
         if (!snap.hasData) return const _SplashScreen();
         if (snap.data!.docs.isEmpty) return const _ProfileMissingScreen();
         final doc = snap.data!.docs.first;

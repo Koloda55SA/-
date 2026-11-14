@@ -127,6 +127,11 @@ async function getAdminUid(env, idToken) {
     { headers: { Authorization: 'Bearer ' + idToken } }
   );
   if (fs.status !== 200) throw new Error('not-admin');
+  // В admins/ лежат и медики/мастера (role = 'medic' | 'mechanic').
+  // Менять пароли и удалять водителей может только администратор.
+  const doc = await fs.json().catch(() => ({}));
+  const role = doc && doc.fields && doc.fields.role && doc.fields.role.stringValue;
+  if (role && role !== 'admin') throw new Error('not-admin');
   return { uid, projectId };
 }
 

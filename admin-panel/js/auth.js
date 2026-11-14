@@ -21,7 +21,20 @@
 // После этого администратор входит по своему номеру + паролю.
 const Auth = {
     currentUser: null,
+    // Роль из admins/{uid}.role: 'admin' (по умолчанию) | 'medic' | 'mechanic'.
+    role: 'admin',
+    // Профиль сотрудника (ФИО и данные сертификата — для отметки допуска).
+    profile: {},
     _bootDone: false,
+
+    ROLE_LABELS: { admin: 'Администратор', medic: 'Медик', mechanic: 'Мастер' },
+
+    isAdmin() { return Auth.role === 'admin'; },
+
+    // Показывает только разрешённые роли разделы меню.
+    _applyRoleUI(role) {
+        document.body.dataset.role = role;
+    },
 
     init() {
         const cachedAdmin = localStorage.getItem('asempro_admin');
@@ -29,6 +42,8 @@ const Auth = {
             try {
                 const cached = JSON.parse(cachedAdmin);
                 if (cached && cached.phone) {
+                    Auth.role = cached.role || 'admin';
+                    Auth._applyRoleUI(Auth.role);
                     Auth._showDashboardShell(cached.phone);
                 }
             } catch (_) {}
@@ -41,10 +56,13 @@ const Auth = {
                     if (adminDoc.exists) {
                         Auth.currentUser = user;
                         const adminData = adminDoc.data() || {};
-                        const display = adminData.phone || user.email || 'Admin';
+                        Auth.role = Auth.ROLE_LABELS[adminData.role] ? adminData.role : 'admin';
+                        Auth.profile = adminData;
+                        const display = adminData.fullName || adminData.phone || user.email || 'Admin';
                         localStorage.setItem('asempro_admin', JSON.stringify({
                             uid: user.uid,
-                            phone: display
+                            phone: display,
+                            role: Auth.role
                         }));
                         Auth.showDashboard();
                     } else {
@@ -88,6 +106,8 @@ const Auth = {
         if (phone.startsWith('8') && phone.length === 11) {
             phone = '+7' + phone.substring(1);
         }
+        // 10 цифр без кода страны (9991234567) — российский номер.
+        if (/^9\d{9}$/.test(phone)) phone = '+7' + phone;
         if (!phone.startsWith('+')) phone = '+' + phone;
         return phone;
     },
@@ -160,14 +180,16 @@ const Auth = {
         document.getElementById('admin-email').textContent = display;
         const sidebarEl = document.getElementById('admin-email-sidebar');
         if (sidebarEl) sidebarEl.textContent = display;
+        if (Auth.role !== 'admin' && typeof showSection === 'function') showSection('checks');
     },
 
     showDashboard() {
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.remove('active');
         document.getElementById('dashboard-page').classList.add('active');
-        // Подпись в шапке/сайдбаре: пытаемся достать phone из admins-документа,
-        // иначе показываем email (без @asempro.admin) или просто "Admin".
+        Auth._applyRoleUI(Auth.role);
+        // Подпись в шапке/сайдбаре: ФИО или телефон из admins-документа,
+        // иначе email (без @asempro.admin) или просто "Admin".
         let display = 'Admin';
         try {
             const cached = JSON.parse(localStorage.getItem('asempro_admin') || '{}');
@@ -176,9 +198,18 @@ const Auth = {
         if (display === 'Admin' && Auth.currentUser?.email) {
             display = Auth.currentUser.email.split('@')[0];
         }
+        if (!Auth.isAdmin()) display += ' · ' + Auth.ROLE_LABELS[Auth.role];
         document.getElementById('admin-email').textContent = display;
         const sidebarEl = document.getElementById('admin-email-sidebar');
         if (sidebarEl) sidebarEl.textContent = display;
+
+        // Очередь на допуск нужна всем ролям (бейдж в меню).
+        Checks.load();
+        if (!Auth.isAdmin()) {
+            // Медик/мастер видят только раздел «Допуск».
+            showSection('checks');
+            return;
+        }
         Drivers.loadDrivers();
         Waybills.loadWaybills();
         Settings.loadSettings();
@@ -190,8 +221,12 @@ const Auth = {
         // ошибки прав доступа (permission-denied).
         [Drivers, Waybills, Requests,
          (typeof Support !== 'undefined' ? Support : null),
-         (typeof Accounting !== 'undefined' ? Accounting : null)]
+         (typeof Accounting !== 'undefined' ? Accounting : null),
+         (typeof Checks !== 'undefined' ? Checks : null),
+         (typeof Staff !== 'undefined' ? Staff : null)]
             .forEach(m => { if (m && typeof m.stopRealtime === 'function') m.stopRealtime(); });
+        Auth.role = 'admin';
+        Auth.profile = {};
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.add('active');
         document.getElementById('dashboard-page').classList.remove('active');

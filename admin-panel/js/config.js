@@ -13,8 +13,12 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-// Cloud Functions (необязательно — fallback)
-const functions = (typeof firebase.functions === 'function') ? firebase.functions() : null;
+// Локальный кэш Firestore (IndexedDB): при повторном открытии сайта списки
+// показываются сразу из кэша, а с сервера докачиваются только изменения.
+// Если браузер не поддерживает (приватный режим и т.п.) — работаем без кэша.
+try {
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+} catch (_) {}
 // URL бесплатного Cloudflare Worker для серверных операций (смена пароля / удаление).
 // Заполняется после деплоя воркера: https://asem-pro-auth.<subdomain>.workers.dev
 const AUTH_WORKER_URL = "https://asem-pro-auth.oon66517.workers.dev";

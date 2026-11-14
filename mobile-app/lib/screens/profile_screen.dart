@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -121,7 +122,10 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 22),
 
             // ===== Статистика =====
-            _StatsRow(driverDocId: driverDocId),
+            _StatsRow(
+              driverDocId: driverDocId,
+              limit: driverData['waybillLimit'] is num ? (driverData['waybillLimit'] as num).toInt() : 60,
+            ),
 
             const SizedBox(height: 22),
 
@@ -273,39 +277,45 @@ class _RowDiv extends StatelessWidget {
   }
 }
 
-class _StatsRow extends StatelessWidget {
+/// Статистика по лимиту ЭПЛ. Берём один документ-счётчик, а не скачиваем
+/// все путевые листы (с подписями) ради подсчёта.
+class _StatsRow extends StatefulWidget {
   final String driverDocId;
-  const _StatsRow({required this.driverDocId});
+  final int limit;
+  const _StatsRow({required this.driverDocId, required this.limit});
+
+  @override
+  State<_StatsRow> createState() => _StatsRowState();
+}
+
+class _StatsRowState extends State<_StatsRow> {
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _stream = FirebaseFirestore.instance.collection('driverCounters').doc(user.uid).snapshots();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox();
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('waybills')
-          .where('authUid', isEqualTo: user.uid)
-          .limit(100)
-          .snapshots(),
+    if (_stream == null) return const SizedBox();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _stream,
       builder: (context, snap) {
-        int total = 0, closed = 0, open = 0;
-        if (snap.hasData) {
-          for (final d in snap.data!.docs) {
-            total++;
-            if (d.data()['status'] == 'closed') {
-              closed++;
-            } else {
-              open++;
-            }
-          }
-        }
+        final c = snap.data?.data()?['count'];
+        final used = c is num ? c.toInt() : 0;
+        final left = math.max(0, widget.limit - used);
         return Row(
           children: [
-            Expanded(child: _stat('Всего', '$total', AppTheme.primary, Icons.description_outlined)),
+            Expanded(child: _stat('Выпущено', '$used', AppTheme.primary, Icons.description_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _stat('Закрыто', '$closed', AppTheme.success, Icons.check_circle_outline)),
+            Expanded(child: _stat('Лимит', '${widget.limit}', AppTheme.info, Icons.inventory_2_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _stat('Активно', '$open', AppTheme.info, Icons.bolt)),
+            Expanded(child: _stat('Осталось', '$left', AppTheme.success, Icons.check_circle_outline)),
           ],
         );
       },

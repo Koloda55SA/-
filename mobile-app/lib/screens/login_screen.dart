@@ -27,6 +27,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (phone.startsWith('8') && phone.length == 11) {
       phone = '+7${phone.substring(1)}';
     }
+    // 10 цифр без кода страны (9991234567) — считаем российским номером.
+    if (RegExp(r'^9\d{9}$').hasMatch(phone)) phone = '+7$phone';
     if (!phone.startsWith('+')) phone = '+$phone';
     return phone;
   }
