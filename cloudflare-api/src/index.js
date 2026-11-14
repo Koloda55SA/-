@@ -11,6 +11,7 @@ import {
 } from './waybills.js';
 import * as admin from './admin.js';
 import * as support from './support.js';
+import { migrate } from './migrate.js';
 
 // ── CORS: сайт админки ходит в API с другого домена ──
 function corsHeaders(request, env) {
@@ -45,6 +46,9 @@ route('GET', '/api/health', () => ({ ok: true, time: now() }));
 route('POST', '/api/auth/login', ({ request, env }) => login(request, env));
 route('POST', '/api/auth/logout', ({ request, env }) => logout(request, env));
 route('GET', '/api/public/waybills/:id', ({ env, params }) => publicWaybill(env, params.id));
+
+// Разовый перенос данных из Firebase: работает, только пока задан MIGRATION_SECRET.
+route('POST', '/api/migrate/:action', ({ request, env, params }) => migrate(request, env, params.action));
 
 // Первый администратор (только если админов ещё нет и задан секрет BOOTSTRAP_SECRET).
 route('POST', '/api/bootstrap', async ({ request, env }) => {

@@ -5,8 +5,8 @@ compatibility_date = "2025-09-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "asem-pro"
-# Подставляется после `wrangler d1 create asem-pro` (для локального запуска не нужен).
-database_id = "00000000-0000-0000-0000-000000000000"
+# База в регионе EEUR (Восточная Европа) — ближе к водителям.
+database_id = "5ba5fb32-3c9f-497e-b1e6-3133fd4d9021"
 migrations_dir = "migrations"
 
 [vars]

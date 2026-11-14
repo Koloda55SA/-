@@ -21,6 +21,7 @@ wrangler d1 create asem-pro                 # id вписать в wrangler.toml
 wrangler d1 migrations apply asem-pro --remote
 wrangler secret put BOOTSTRAP_SECRET
 wrangler deploy
+wrangler secret put MIGRATION_SECRET        # перенос данных из Firebase: migration/README.md
 ```
 
 ## Роли и доступ
