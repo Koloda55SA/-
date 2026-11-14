@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -122,10 +121,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 22),
 
             // ===== Статистика =====
-            _StatsRow(
-              driverDocId: driverDocId,
-              limit: driverData['waybillLimit'] is num ? (driverData['waybillLimit'] as num).toInt() : 60,
-            ),
+            _StatsRow(driverDocId: driverDocId),
 
             const SizedBox(height: 22),
 
@@ -277,12 +273,11 @@ class _RowDiv extends StatelessWidget {
   }
 }
 
-/// Статистика по лимиту ЭПЛ. Берём один документ-счётчик, а не скачиваем
-/// все путевые листы (с подписями) ради подсчёта.
+/// Сколько ЭПЛ выпущено. Берём один документ-счётчик, а не скачиваем
+/// все путевые листы (с подписями) ради подсчёта. Лимита на ЭПЛ нет.
 class _StatsRow extends StatefulWidget {
   final String driverDocId;
-  final int limit;
-  const _StatsRow({required this.driverDocId, required this.limit});
+  const _StatsRow({required this.driverDocId});
 
   @override
   State<_StatsRow> createState() => _StatsRowState();
@@ -308,14 +303,11 @@ class _StatsRowState extends State<_StatsRow> {
       builder: (context, snap) {
         final c = snap.data?.data()?['count'];
         final used = c is num ? c.toInt() : 0;
-        final left = math.max(0, widget.limit - used);
         return Row(
           children: [
-            Expanded(child: _stat('Выпущено', '$used', AppTheme.primary, Icons.description_outlined)),
+            Expanded(child: _stat('Выпущено ЭПЛ', '$used', AppTheme.primary, Icons.description_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _stat('Лимит', '${widget.limit}', AppTheme.info, Icons.inventory_2_outlined)),
-            const SizedBox(width: 10),
-            Expanded(child: _stat('Осталось', '$left', AppTheme.success, Icons.check_circle_outline)),
+            Expanded(child: _stat('Лимит', 'Без лимита', AppTheme.success, Icons.all_inclusive)),
           ],
         );
       },

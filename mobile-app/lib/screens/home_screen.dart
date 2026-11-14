@@ -72,21 +72,9 @@ class _DashboardPageState extends State<_DashboardPage> {
   Map<String, dynamic>? _activeWaybill;
   String? _activeWaybillId;
   bool _loadingActive = true;
-  int _usedQuota = 0;
-  bool _quotaLoaded = false;
-  bool _requestPending = false;
-  bool _sendingQuotaRequest = false;
+  /// Сколько ЭПЛ выпущено (только для статистики — лимита больше нет).
+  int _issuedCount = 0;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _activeSub;
-
-  /// Лимит выпуска ЭПЛ для водителя (по умолчанию 60).
-  int get _quotaLimit {
-    final v = widget.driverData['waybillLimit'];
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    return 60;
-  }
-
-  bool get _quotaExhausted => _usedQuota >= _quotaLimit;
 
   @override
   void initState() {
@@ -154,71 +142,17 @@ class _DashboardPageState extends State<_DashboardPage> {
           .collection('driverCounters')
           .doc(user.uid)
           .get();
-      int used = 0;
       final c = counter.data()?['count'];
-      if (c is int) used = c;
-      if (c is num) used = c.toInt();
-
-      final pending = await FirebaseFirestore.instance
-          .collection('quotaRequests')
-          .where('authUid', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'pending')
-          .limit(1)
-          .get();
-
       if (!mounted) return;
-      setState(() {
-        _usedQuota = used;
-        _requestPending = pending.docs.isNotEmpty;
-        _quotaLoaded = true;
-      });
+      setState(() => _issuedCount = c is num ? c.toInt() : 0);
     } catch (e) {
-      debugPrint('Quota load error: $e');
+      debugPrint('Counter load error: $e');
     }
   }
 
-  Future<void> _requestMoreQuota() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || _sendingQuotaRequest || _requestPending) return;
-    _sendingQuotaRequest = true;
-    try {
-      await FirebaseFirestore.instance.collection('quotaRequests').add({
-        'driverId': widget.driverDocId,
-        'authUid': user.uid,
-        'driverName': (widget.driverData['fullName'] ?? '').toString(),
-        'phone': (widget.driverData['phone'] ?? '').toString(),
-        'orgName': (widget.driverData['orgName'] ?? '').toString(),
-        'currentLimit': _quotaLimit,
-        'used': _usedQuota,
-        'status': 'pending',
-        'requestedAt': FieldValue.serverTimestamp(),
-      });
-      if (!mounted) return;
-      setState(() => _requestPending = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Заявка на +60 ЭПЛ отправлена администратору'),
-          backgroundColor: AppTheme.success,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка отправки заявки: $e'), backgroundColor: AppTheme.danger),
-      );
-    } finally {
-      _sendingQuotaRequest = false;
-    }
-  }
-
+  // Лимита на ЭПЛ нет: каждый лист и так выпускается только после
+  // отметок медика и мастера.
   Future<void> _onCreateWaybill() async {
-    // Лимит проверяем по актуальному счётчику, а не по нулю до загрузки.
-    if (!_quotaLoaded) await _loadQuota();
-    if (!mounted) return;
-    if (_quotaExhausted) {
-      await _showQuotaDialog();
-      return;
-    }
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -242,31 +176,6 @@ class _DashboardPageState extends State<_DashboardPage> {
           driverDocId: widget.driverDocId,
           existingRequestId: id,
         ),
-      ),
-    );
-  }
-
-  Future<void> _showQuotaDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Лимит ЭПЛ исчерпан'),
-        content: Text(
-          _requestPending
-              ? 'Вы использовали все $_quotaLimit ЭПЛ. Заявка на дополнительные листы уже отправлена — дождитесь подтверждения администратора.'
-              : 'Вы использовали все $_quotaLimit ЭПЛ. Отправить администратору заявку на дополнительные 60 листов?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
-          if (!_requestPending)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _requestMoreQuota();
-              },
-              child: const Text('Отправить заявку'),
-            ),
-        ],
       ),
     );
   }
@@ -378,7 +287,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   child: _StatTile(
                     icon: Icons.description_outlined,
                     label: 'Выпущено ЭПЛ',
-                    value: '$_usedQuota / $_quotaLimit',
+                    value: '$_issuedCount',
                     color: AppTheme.primary,
                     valueSize: 18,
                   ),
@@ -438,15 +347,6 @@ class _DashboardPageState extends State<_DashboardPage> {
               )
             else
               _NewWaybillCard(onTap: _onCreateWaybill),
-
-            if (_quotaExhausted) ...[
-              const SizedBox(height: 12),
-              _QuotaBanner(
-                limit: _quotaLimit,
-                pending: _requestPending,
-                onRequest: _requestMoreQuota,
-              ),
-            ],
 
             const SizedBox(height: 22),
 
@@ -808,60 +708,6 @@ class _QuickAction extends StatelessWidget {
             Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _QuotaBanner extends StatelessWidget {
-  final int limit;
-  final bool pending;
-  final VoidCallback onRequest;
-
-  const _QuotaBanner({
-    required this.limit,
-    required this.pending,
-    required this.onRequest,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.lock_clock, color: AppTheme.accent, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Лимит $limit ЭПЛ исчерпан',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            pending
-                ? 'Заявка на дополнительные листы отправлена. Дождитесь подтверждения администратора.'
-                : 'Чтобы продолжить выпускать ЭПЛ, запросите у администратора дополнительные 60 листов.',
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-          ),
-          if (!pending) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onRequest,
-                icon: const Icon(Icons.send_outlined, size: 18),
-                label: const Text('Запросить +60 ЭПЛ'),
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

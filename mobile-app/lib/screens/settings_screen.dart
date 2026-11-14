@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 import 'delete_account_screen.dart';
 
 /// Версия приложения (синхронизирована с pubspec.yaml -> version).
-const String _kAppVersion = '1.2.0+6';
+const String _kAppVersion = '1.3.0+7';
 
 /// Полный экран настроек: уведомления, безопасность, язык, тема, информация
 /// о приложении, удаление аккаунта и выход.
