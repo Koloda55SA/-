@@ -1,0 +1,17 @@
+name = "asem-pro-api"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "asem-pro"
+# Подставляется после `wrangler d1 create asem-pro` (для локального запуска не нужен).
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+# Сайты, которым разрешено обращаться к API из браузера (через запятую).
+ALLOWED_ORIGINS = "https://taxopark-admin.pages.dev,http://localhost:8765"
+
+# Секрет для создания первого администратора (POST /api/bootstrap) задаётся так:
+#   wrangler secret put BOOTSTRAP_SECRET
