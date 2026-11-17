@@ -1,0 +1,36 @@
+name: RuStore status
+
+# Только чтение: показывает статус последних версий в RuStore
+# (на модерации, опубликована, отклонена). Ничего не публикует.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rustore-status ]
+    paths:
+      - 'rustore/status.py'
+      - '.github/workflows/rustore-status.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install --quiet requests cryptography
+
+      - name: Versions in RuStore
+        working-directory: rustore
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          RUSTORE_PACKAGE: com.taxopark.driver
+        run: python status.py
