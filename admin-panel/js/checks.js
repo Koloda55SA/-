@@ -44,7 +44,7 @@ const Checks = {
 
     async inspectionRequest(user, path, body) {
         const idToken = await user.getIdToken();
-        const response = await fetch(AUTH_WORKER_URL + path, {
+        const response = await fetch('/api/inspections' + path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idToken, ...body }),
