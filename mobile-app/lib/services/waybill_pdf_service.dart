@@ -112,6 +112,7 @@ class WaybillPdfService {
   }
 
   static pw.Widget _build(Map<String, dynamic> d) {
+    if (d['status'] == 'pending') return _pendingWaybill(d);
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
@@ -166,6 +167,47 @@ class WaybillPdfService {
         _footer(d),
       ],
     );
+  }
+
+  static pw.Widget _pendingWaybill(Map<String, dynamic> d) {
+    String result(String prefix) {
+      final status = d['${prefix}Status'];
+      if (status != 'ok' && status != 'rejected') return 'Ожидает результата';
+      return [
+        status == 'ok' ? 'Пройден' : 'Отказ',
+        _v(d, '${prefix}Name'),
+        _v(d, '${prefix}Time'),
+      ].where((part) => part.isNotEmpty).join(' · ');
+    }
+
+    pw.TableRow row(String label, String value) => pw.TableRow(children: [
+      _cellLabel(label), _cellValue(value),
+    ]);
+
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+      _headerEpl(),
+      pw.SizedBox(height: 8),
+      _titleRow(d),
+      pw.SizedBox(height: 8),
+      _orgAndCodes(d),
+      _vehicleAndTransport(d),
+      _idOsgopPermit(d),
+      pw.SizedBox(height: 12),
+      pw.Table(
+        border: pw.TableBorder.all(width: 0.6),
+        columnWidths: const {0: pw.FlexColumnWidth(2), 1: pw.FlexColumnWidth(3)},
+        children: [
+          row('Показание одометра, км', _v(d, 'odometerStart')),
+          row('Предрейсовый медосмотр', result('med')),
+          row('Технический контроль', result('tech')),
+          row('Допуск на линию', 'Ожидает решения'),
+        ],
+      ),
+      if (_v(d, 'signatureData').isNotEmpty || d['_signatureBytes'] != null)
+        _driverSignatureRow(d),
+      pw.SizedBox(height: 16),
+      _footer(d),
+    ]);
   }
 
   // ============== 1. "ЭПЛ" в шапке ==============
@@ -732,6 +774,8 @@ class WaybillPdfService {
           fit: pw.BoxFit.contain,
         ),
       );
+    } else if (d['status'] == 'pending') {
+      signatureWidget = _cellValue('');
     } else {
       // Fallback — стилизованная имитация подписи
       signatureWidget = pw.Container(
@@ -950,6 +994,7 @@ class WaybillPdfService {
   static String _qrPayload(Map<String, dynamic> d) {
     final docId = _v(d, 'docId');
     if (docId.isNotEmpty) {
+      if (d['status'] == 'pending') return 'https://admin.radev.digital/waybill.html?id=${Uri.encodeQueryComponent(docId)}';
       return '$viewerBaseUrl/waybill.html?id=$docId';
     }
     final s = StringBuffer();

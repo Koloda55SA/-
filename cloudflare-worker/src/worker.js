@@ -12,7 +12,7 @@
 //   - Реальное изменение делает служебный ключ (секрет SERVICE_ACCOUNT_JSON),
 //     который хранится только в зашифрованных секретах Worker.
 
-import { autoIssueEnabled, findInspectionDriver, firestore, issueReadyWaybills, policyId, recordInspection } from './auto-issue.js';
+import { autoIssueEnabled, findInspectionDriver, firestore, issueReadyWaybills, mayOpenPendingWaybill, policyId, recordInspection } from './auto-issue.js';
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -108,7 +108,7 @@ async function getAccessToken(env) {
 }
 
 // Проверяем токен Firebase и читаем профиль сотрудника, которому он выдан.
-async function getStaff(env, idToken) {
+async function getUserId(env, idToken) {
   // 1) Узнаём uid по idToken (публичный web API key).
   const lookup = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${env.FIREBASE_API_KEY}`,
@@ -121,7 +121,11 @@ async function getStaff(env, idToken) {
   const lj = await lookup.json();
   const uid = lj.users && lj.users[0] && lj.users[0].localId;
   if (!uid) throw new Error('bad-token');
+  return uid;
+}
 
+async function getStaff(env, idToken) {
+  const uid = await getUserId(env, idToken);
   // 2) Проверяем admins/{uid} через Firestore REST с тем же idToken
   //    (правила разрешают читать свой admin-документ).
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON);
@@ -153,11 +157,27 @@ async function saveAutoIssuePreference(env, staff, body, cors) {
   return permitted ? json({ ok: true }, 200, cors) : json({ error: 'staff-role-required' }, 403, cors);
 }
 
-const inspectionRoutes = new Set(['/auto-issue-preference', '/inspection-driver', '/inspection-result']);
+const inspectionRoutes = new Set(['/auto-issue-preference', '/inspection-driver', '/inspection-result', '/waybill-preview']);
 
 async function handleInspection(path, env, body, cors) {
   if (typeof body?.idToken !== 'string' || !body.idToken) {
     return json({ error: 'missing-params' }, 400, cors);
+  }
+  if (path === '/waybill-preview') {
+    if (typeof body.waybillId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(body.waybillId)) {
+      return json({ error: 'bad-waybill' }, 400, cors);
+    }
+    let uid;
+    try {
+      uid = await getUserId(env, body.idToken);
+    } catch {
+      return json({ error: 'unauthorized' }, 401, cors);
+    }
+    const store = firestore(JSON.parse(env.SERVICE_ACCOUNT_JSON).project_id, await getAccessToken(env));
+    const bill = await store.get('waybills', body.waybillId);
+    if (bill?.fields?.authUid?.stringValue !== uid) return json({ error: 'not-found' }, 404, cors);
+    const enabled = bill.fields.status?.stringValue === 'pending' && await mayOpenPendingWaybill(store);
+    return json({ enabled }, 200, cors);
   }
   let staff;
   try {

@@ -1,4 +1,5 @@
 const apiRoutes = new Map([
+  ['/api/inspections/waybill-preview', '/waybill-preview'],
   ['/api/inspections/auto-issue-preference', '/auto-issue-preference'],
   ['/api/inspections/inspection-driver', '/inspection-driver'],
   ['/api/inspections/inspection-result', '/inspection-result'],

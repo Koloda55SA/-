@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -51,6 +52,9 @@ class _WaybillScreenState extends State<WaybillScreen> {
   bool _isSubmitting = false;
   bool _isCancelling = false;
   bool _opened = false;
+  Timer? _previewRetry;
+  bool _checkingPreview = false;
+  bool _previewUnavailable = false;
   final _odometerController = TextEditingController();
   Uint8List? _signatureImage;
 
@@ -70,6 +74,7 @@ class _WaybillScreenState extends State<WaybillScreen> {
 
   @override
   void dispose() {
+    _previewRetry?.cancel();
     _sub?.cancel();
     _odometerController.dispose();
     super.dispose();
@@ -134,8 +139,8 @@ class _WaybillScreenState extends State<WaybillScreen> {
               ),
               _row(Icons.business_outlined, 'Организация', (driver['orgName'] ?? '').toString()),
               const SizedBox(height: 6),
-              _infoBox('После запроса подойдите к медику и мастеру. Путевой лист '
-                  'выпускается, когда оба отметят допуск, и действует 12 часов.'),
+              _infoBox('Если медик и мастер включили автодопуск, ЭПЛ откроется сразу. '
+                  'В листе будут видны результаты осмотров, которые уже поступили.'),
             ],
           ),
         ),
@@ -324,8 +329,9 @@ class _WaybillScreenState extends State<WaybillScreen> {
               ],
               if (!rejected && !cancelled && !active) ...[
                 const SizedBox(height: 10),
-                _infoBox('Подойдите к медику и мастеру. Как только оба отметят допуск, '
-                    'путевой лист откроется здесь автоматически.'),
+                _infoBox(_previewUnavailable
+                    ? 'Не удалось загрузить настройки. Приложение повторит проверку автоматически.'
+                    : 'Проверяем автодопуск. Если он выключен, ЭПЛ откроется после обеих отметок.'),
               ],
             ],
           ),
@@ -459,12 +465,49 @@ class _WaybillScreenState extends State<WaybillScreen> {
       final data = snap.data();
       if (!mounted || data == null) return;
       setState(() => _request = data);
+      _previewRetry?.cancel();
       // Оба допустили — сразу показываем путевой лист.
-      if (data['status'] == 'active' && !_opened) {
-        _opened = true;
+      if (data['status'] == 'active') {
         _openPdf(data);
+      } else if (data['status'] == 'pending') {
+        _checkPreview(id);
       }
     }, onError: (e) => _showError('Ошибка связи: $e'));
+  }
+
+  Future<void> _checkPreview(String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (_checkingPreview || _opened || user == null || _isCancelling) return;
+    _previewRetry?.cancel();
+    _checkingPreview = true;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      Future<bool> load() async {
+        final token = await user.getIdToken();
+        final req = await client.postUrl(Uri.https('admin.radev.digital', '/api/inspections/waybill-preview'));
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode({'idToken': token, 'waybillId': id}));
+        final response = await req.close();
+        final body = await response.transform(utf8.decoder).join();
+        if (response.statusCode != 200) throw HttpException('HTTP ${response.statusCode}');
+        return jsonDecode(body)['enabled'] == true;
+      }
+      final enabled = await load().timeout(const Duration(seconds: 12));
+      if (mounted && _previewUnavailable) setState(() => _previewUnavailable = false);
+      if (mounted && !_isCancelling && user.uid == FirebaseAuth.instance.currentUser?.uid &&
+          _requestId == id && _request?['status'] == 'pending' && enabled) {
+        await _openPdf(_request!);
+      }
+    } catch (e) {
+      if (mounted && !_previewUnavailable) setState(() => _previewUnavailable = true);
+      debugPrint('Waybill preview: $e');
+    } finally {
+      client.close(force: true);
+      _checkingPreview = false;
+      if (mounted && !_opened && _requestId == id && _request?['status'] == 'pending') {
+        _previewRetry = Timer(const Duration(seconds: 30), () => _checkPreview(id));
+      }
+    }
   }
 
   Future<void> _submitRequest() async {
@@ -584,11 +627,18 @@ class _WaybillScreenState extends State<WaybillScreen> {
   }
 
   Future<void> _openPdf(Map<String, dynamic> data) async {
+    if (_opened || _isCancelling) return;
+    _opened = true;
     try {
       final merged = <String, dynamic>{...data, 'docId': _requestId};
       if (_signatureImage != null) merged['_signatureBytes'] = _signatureImage;
       final pdfBytes = await WaybillPdfService.generateBytes(merged);
       if (!mounted) return;
+      if (_isCancelling || _request?['status'] != data['status']) {
+        _opened = false;
+        if (!_isCancelling && _request?['status'] == 'active') await _openPdf(_request!);
+        return;
+      }
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(

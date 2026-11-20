@@ -19,6 +19,27 @@ export function autoIssueEnabled(profile, policy) {
   }
   return profile.fields?.autoIssueEnabled?.booleanValue === true;
 }
+
+// Drivers only need the two switches. Staff records stay on the server.
+export async function mayOpenPendingWaybill(store) {
+  return store.transaction(async tx => {
+    const roles = Object.values(ROLES);
+    const names = roles.map(role => tx.name('settings', policyId(role)));
+    const policies = await tx.read(names);
+    const staff = await tx.query('admins', condition('role', 'IN', {
+      arrayValue: { values: roles.map(str) },
+    }), undefined, {
+      select: { fields: ['role', 'autoIssueEnabled', 'autoIssueRevision'].map(fieldPath => ({ fieldPath })) },
+    });
+    const enabled = roles.every((role, index) => {
+      const policy = policies.get(names[index]);
+      const employees = staff.filter(doc => field(doc, 'role') === role);
+      return employees.length ? employees.some(doc => autoIssueEnabled(doc, policy)) :
+        policy?.fields?.enabled?.booleanValue === true;
+    });
+    return { result: enabled };
+  });
+}
 const docId = (doc) => doc.name.split('/').at(-1);
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 

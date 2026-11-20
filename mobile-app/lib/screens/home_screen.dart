@@ -619,7 +619,7 @@ class _PendingWaybillCard extends StatelessWidget {
             _mark('Техконтроль', 'tech'),
             const SizedBox(height: 12),
             const Text(
-              'Подойдите к медику и мастеру. Путевой лист появится здесь после обеих отметок.',
+              'Нажмите, чтобы открыть заявку. При включённом автодопуске откроется ЭПЛ.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
             ),
           ],
