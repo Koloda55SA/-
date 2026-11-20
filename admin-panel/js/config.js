@@ -19,6 +19,7 @@ const db = firebase.firestore();
 try {
     db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 } catch (_) {}
-// URL бесплатного Cloudflare Worker для серверных операций (смена пароля / удаление).
-// Заполняется после деплоя воркера: https://asem-pro-auth.<subdomain>.workers.dev
-const AUTH_WORKER_URL = "https://asem-pro-auth.oon66517.workers.dev";
+// В админке запросы идут через привязку Worker на том же домене.
+const AUTH_WORKER_URL = ['admin.radev.digital', 'asem-pro-admin.oon66517.workers.dev'].includes(location.hostname)
+    ? '/auth'
+    : 'https://asem-pro-auth.oon66517.workers.dev';
