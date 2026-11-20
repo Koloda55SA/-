@@ -13,9 +13,15 @@ const Checks = {
     _items: [],
     _busy: {},
     _inspectionDriver: null,
+    _staffSubscription: null,
+    _staff: [],
+    _saving: new Set(),
 
     init() {
-        document.getElementById('auto-issue-enabled').addEventListener('change', Checks.saveAutoIssue);
+        for (const group of document.querySelectorAll('[data-issue-role]')) {
+            group.querySelector('input').addEventListener('change', Checks.saveAutoIssue);
+            group.querySelector('select').addEventListener('change', () => Checks.renderRole(group));
+        }
         document.getElementById('inspection-form').addEventListener('submit', Checks.findInspectionDriver);
         document.getElementById('inspection-phone').addEventListener('input', Checks.clearInspectionDriver);
         document.getElementById('inspection-pass').addEventListener('click', () => Checks.recordInspection(true));
@@ -24,20 +30,63 @@ const Checks = {
 
     renderAutoIssue() {
         const settings = document.getElementById('auto-issue-settings');
-        settings.hidden = !Auth.currentUser || !['medic', 'mechanic'].includes(Auth.role);
-        const input = document.getElementById('auto-issue-enabled');
-        input.checked = Auth.profile.autoIssueEnabled === true;
-        input.disabled = settings.hidden;
+        const user = Auth.currentUser;
+        if (Checks._staffSubscription) Checks._staffSubscription();
+        Checks._staffSubscription = null;
+        Checks._staff = [];
+        Checks._saving = new Set();
+        settings.hidden = !user;
         const feedback = document.getElementById('auto-issue-feedback');
         feedback.textContent = '';
         delete feedback.dataset.error;
         document.getElementById('inspection-phone').value = '';
         Checks.clearInspectionDriver();
         Checks.renderInspectionForm();
+        for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
+        if (!user) return;
+        const staff = db.collection('admins');
+        const isAdmin = Auth.role === 'admin';
+        const source = isAdmin ? staff.where('role', 'in', ['medic', 'mechanic']) : staff.doc(user.uid);
+        Checks._staffSubscription = source.onSnapshot(snapshot => {
+            if (Auth.currentUser !== user) return;
+            Checks._staff = (isAdmin ? snapshot.docs : (snapshot.exists ? [snapshot] : []))
+                .map(doc => ({ ...doc.data(), id: doc.id }))
+                .sort((a, b) => (a.fullName || a.id).localeCompare(b.fullName || b.id, 'ru'));
+            if (!isAdmin) {
+                Auth.profile.autoIssueEnabled = Checks._staff.some(s => s.id === user.uid && s.role === Auth.role && s.autoIssueEnabled === true);
+                Checks.renderInspectionForm();
+            }
+            for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
+        }, () => {
+            if (Auth.currentUser !== user) return;
+            if (!isAdmin) Checks._staff = [{ ...Auth.profile, id: user.uid, role: Auth.role }];
+            for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
+            feedback.textContent = 'Не удалось обновить настройки сотрудников.';
+            feedback.dataset.error = '';
+        });
+    },
+
+    renderRole(group) {
+        const role = group.dataset.issueRole;
+        const staff = Checks._staff.filter(s => s.role === role);
+        const input = group.querySelector('input');
+        const select = group.querySelector('select');
+        const note = group.querySelector('small');
+        const selected = staff.find(s => s.id === select.value) || staff[0];
+        const otherRole = Auth.role !== 'admin' && Auth.role !== role;
+        select.replaceChildren(...staff.map(s => new Option(s.fullName || s.phone || s.id, s.id)));
+        if (selected) select.value = selected.id;
+        select.hidden = staff.length < 2;
+        select.disabled = Checks._saving.has(role);
+        input.checked = selected?.autoIssueEnabled === true;
+        input.indeterminate = otherRole;
+        input.disabled = otherRole || !selected || Checks._saving.has(role);
+        note.textContent = otherRole ? 'Настройка в кабинете сотрудника' :
+            selected ? (selected.fullName || selected.phone || '') : 'Сотрудник не найден';
     },
 
     renderInspectionForm() {
-        document.getElementById('inspection-form').hidden = Auth.profile.autoIssueEnabled !== true;
+        document.getElementById('inspection-form').hidden = !Auth.currentUser || Auth.role === 'admin' || Auth.profile.autoIssueEnabled !== true;
         document.getElementById('inspection-pass').textContent = Auth.role === 'medic'
             ? 'Записать пройденный медосмотр' : 'Записать пройденный техконтроль';
     },
@@ -127,29 +176,46 @@ const Checks = {
 
     async saveAutoIssue(event) {
         const input = event.target;
+        const role = input.dataset.autoIssue;
+        const group = input.closest('[data-issue-role]');
+        const id = group.querySelector('select').value;
         const enabled = input.checked;
         const user = Auth.currentUser;
-        if (!user) return;
+        if (!user || !id || (Auth.role !== 'admin' && (user.uid !== id || Auth.role !== role))) return;
         const profile = Auth.profile;
+        const saving = Checks._saving;
+        saving.add(role);
+        group.querySelector('select').disabled = true;
         const feedback = document.getElementById('auto-issue-feedback');
         input.disabled = true;
         delete feedback.dataset.error;
         feedback.textContent = 'Сохранение…';
 
         try {
-            await Checks.inspectionRequest(user, '/auto-issue-preference', { enabled });
+            if (Auth.role === 'admin') {
+                const ref = db.collection('admins').doc(id);
+                await db.runTransaction(async tx => {
+                    const snapshot = await tx.get(ref);
+                    if (!snapshot.exists || snapshot.data().role !== role) throw new Error('Роль изменилась');
+                    tx.update(ref, { autoIssueEnabled: enabled });
+                });
+            } else {
+                await Checks.inspectionRequest(user, '/auto-issue-preference', { enabled });
+            }
             if (Auth.profile !== profile) return;
-            profile.autoIssueEnabled = enabled;
+            const employee = Checks._staff.find(s => s.id === id);
+            if (employee) employee.autoIssueEnabled = enabled;
+            if (id === user.uid) profile.autoIssueEnabled = enabled;
             Checks.clearInspectionDriver();
             Checks.renderInspectionForm();
-            feedback.textContent = enabled ? 'Автовыпуск включён для вашей роли.' : 'Автовыпуск выключен для вашей роли.';
+            feedback.textContent = enabled ? 'Автодопуск включён.' : 'Автодопуск выключен.';
         } catch (error) {
             if (Auth.profile !== profile) return;
-            input.checked = profile.autoIssueEnabled === true;
             feedback.dataset.error = '';
             feedback.textContent = 'Не удалось сохранить настройку. Попробуйте ещё раз.';
         } finally {
-            if (Auth.profile === profile) input.disabled = false;
+            saving.delete(role);
+            if (Auth.profile === profile) Checks.renderRole(group);
         }
     },
 

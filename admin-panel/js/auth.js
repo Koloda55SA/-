@@ -227,6 +227,7 @@ const Auth = {
          (typeof Staff !== 'undefined' ? Staff : null)]
             .forEach(m => { if (m && typeof m.stopRealtime === 'function') m.stopRealtime(); });
         Auth.role = 'admin';
+        Auth.currentUser = null;
         Auth.profile = {};
         if (typeof Checks !== 'undefined') Checks.renderAutoIssue();
         document.getElementById('loading-page').classList.remove('active');
