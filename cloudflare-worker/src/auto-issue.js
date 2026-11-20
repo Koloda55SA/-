@@ -58,6 +58,7 @@ export function firestore(projectId, token) {
 
   return {
     ...client(),
+    commit: (writes) => request(':commit', { writes }),
     async transaction(operation) {
       const { transaction } = await request(':beginTransaction', { options: { readWrite: {} } });
       try {

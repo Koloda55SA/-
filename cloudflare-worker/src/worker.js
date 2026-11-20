@@ -131,23 +131,22 @@ async function getStaff(env, idToken) {
   if (fs.status !== 200) throw new Error('not-staff');
   const profile = await fs.json();
   const role = profile.fields?.role?.stringValue || 'admin';
-  return { uid, role, profile, profileUrl, projectId };
+  return { uid, role, profile, projectId };
 }
 
 async function saveAutoIssuePreference(env, staff, body, cors) {
   if (typeof body.enabled !== 'boolean') {
     return json({ error: 'bad-preference' }, 400, cors);
   }
-  const url = new URL(staff.profileUrl);
-  url.searchParams.set('updateMask.fieldPaths', 'autoIssueEnabled');
-  url.searchParams.set('currentDocument.updateTime', staff.profile.updateTime);
-  const accessToken = await getAccessToken(env);
-  const result = await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + accessToken },
-    body: JSON.stringify({ fields: { autoIssueEnabled: { booleanValue: body.enabled } } }),
-  });
-  if (!result.ok) return json({ error: 'preference-update-failed' }, 502, cors);
+  const store = firestore(staff.projectId, await getAccessToken(env));
+  await store.commit([{
+    update: {
+      name: staff.profile.name,
+      fields: { autoIssueEnabled: { booleanValue: body.enabled } },
+    },
+    updateMask: { fieldPaths: ['autoIssueEnabled'] },
+    currentDocument: { updateTime: staff.profile.updateTime },
+  }]);
   return json({ ok: true }, 200, cors);
 }
 
