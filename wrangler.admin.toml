@@ -1,5 +1,6 @@
 name = "asem-pro-admin"
 compatibility_date = "2025-09-01"
+workers_dev = true
 routes = [
   { pattern = "admin.radev.digital", custom_domain = true }
 ]
