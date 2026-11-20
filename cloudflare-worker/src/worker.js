@@ -12,6 +12,8 @@
 //   - Реальное изменение делает служебный ключ (секрет SERVICE_ACCOUNT_JSON),
 //     который хранится только в зашифрованных секретах Worker.
 
+import { findInspectionDriver, firestore, issueReadyWaybills, recordInspection } from './auto-issue.js';
+
 let _tokenCache = { token: null, exp: 0 };
 
 function corsHeaders(env, request) {
@@ -129,21 +131,12 @@ async function getStaff(env, idToken) {
   if (fs.status !== 200) throw new Error('not-staff');
   const profile = await fs.json();
   const role = profile.fields?.role?.stringValue || 'admin';
-  return { role, profile, profileUrl };
+  return { uid, role, profile, profileUrl, projectId };
 }
 
-async function saveAutoIssuePreference(env, body, cors) {
-  if (typeof body?.idToken !== 'string' || !body.idToken || typeof body.enabled !== 'boolean') {
+async function saveAutoIssuePreference(env, staff, body, cors) {
+  if (typeof body.enabled !== 'boolean') {
     return json({ error: 'bad-preference' }, 400, cors);
-  }
-  let staff;
-  try {
-    staff = await getStaff(env, body.idToken);
-  } catch {
-    return json({ error: 'unauthorized' }, 401, cors);
-  }
-  if (staff.role !== 'medic' && staff.role !== 'mechanic') {
-    return json({ error: 'staff-role-required' }, 403, cors);
   }
   const url = new URL(staff.profileUrl);
   url.searchParams.set('updateMask.fieldPaths', 'autoIssueEnabled');
@@ -156,6 +149,42 @@ async function saveAutoIssuePreference(env, body, cors) {
   });
   if (!result.ok) return json({ error: 'preference-update-failed' }, 502, cors);
   return json({ ok: true }, 200, cors);
+}
+
+const inspectionRoutes = new Set(['/auto-issue-preference', '/inspection-driver', '/inspection-result']);
+
+async function handleInspection(path, env, body, cors) {
+  if (typeof body?.idToken !== 'string' || !body.idToken) {
+    return json({ error: 'missing-params' }, 400, cors);
+  }
+  let staff;
+  try {
+    staff = await getStaff(env, body.idToken);
+  } catch {
+    return json({ error: 'unauthorized' }, 401, cors);
+  }
+  if (staff.role !== 'medic' && staff.role !== 'mechanic') {
+    return json({ error: 'staff-role-required' }, 403, cors);
+  }
+  if (path === '/auto-issue-preference') {
+    return saveAutoIssuePreference(env, staff, body, cors);
+  }
+  if (staff.profile.fields?.autoIssueEnabled?.booleanValue !== true) {
+    return json({ error: 'auto-issue-disabled' }, 403, cors);
+  }
+  const store = firestore(staff.projectId, await getAccessToken(env));
+  if (path === '/inspection-driver') {
+    const { status = 200, ...result } = await findInspectionDriver(store, body.phone);
+    return json(result, status, cors);
+  }
+  const { status = 200, ready, ...result } = await recordInspection(store, staff, body);
+  if (ready) {
+    // Запись уже сохранена. Если немедленный выпуск сорвётся, очередь обработает Cron.
+    const activation = await issueReadyWaybills(store, new Date(), body.driverId)
+      .catch(() => ({ issued: 0 }));
+    result.issued = activation.issued > 0;
+  }
+  return json(result, status, cors);
 }
 
 async function handle(request, env) {
@@ -175,8 +204,8 @@ async function handle(request, env) {
   } catch (_) {
     return json({ error: 'bad-json' }, 400, cors);
   }
-  if (url.pathname === '/auto-issue-preference') {
-    return saveAutoIssuePreference(env, body, cors);
+  if (inspectionRoutes.has(url.pathname)) {
+    return handleInspection(url.pathname, env, body, cors);
   }
   const { idToken, driverUid } = body || {};
   if (!idToken || !driverUid) {
@@ -229,10 +258,21 @@ async function handle(request, env) {
 }
 
 export default {
+  async scheduled(_controller, env) {
+    const { project_id: projectId } = JSON.parse(env.SERVICE_ACCOUNT_JSON);
+    const store = firestore(projectId, await getAccessToken(env));
+    const result = await issueReadyWaybills(store);
+    console.log('Automatic waybill issuance', result);
+  },
+
   async fetch(request, env) {
     try {
       return await handle(request, env);
     } catch (e) {
+      if (inspectionRoutes.has(new URL(request.url).pathname)) {
+        console.error('Inspection request:', e.message);
+        return json({ error: 'internal' }, 500, corsHeaders(env, request));
+      }
       return json(
         { error: 'internal', detail: String(e && e.message ? e.message : e) },
         500,

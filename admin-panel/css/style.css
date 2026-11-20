@@ -758,7 +758,7 @@ body[data-role="mechanic"] .admin-only { display: none !important; }
     border: 1px solid var(--border);
     border-radius: 12px;
 }
-.auto-issue-settings label {
+.auto-issue-settings > label {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -766,12 +766,22 @@ body[data-role="mechanic"] .admin-only { display: none !important; }
     font-weight: 600;
     cursor: pointer;
 }
-.auto-issue-settings input {
+#auto-issue-enabled {
     width: 18px;
     height: 18px;
     accent-color: var(--primary);
 }
 .auto-issue-settings p[data-error] { color: var(--danger); }
+.inspection-fields, .inspection-actions {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.inspection-fields .form-group { margin-bottom: 0; }
+#inspection-form > * { margin-top: 10px; }
+#inspection-driver-summary { margin-bottom: 8px; }
+.inspection-fields button, .inspection-actions button { min-height: 44px; }
 .table-empty { text-align: center; color: var(--text-light); padding: 32px !important; }
 .check-meta { font-size: 11px; color: var(--text-light); margin-top: 4px; }
 .check-actions { display: flex; gap: 6px; flex-wrap: wrap; }

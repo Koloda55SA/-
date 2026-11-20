@@ -257,8 +257,25 @@
                         <input type="checkbox" id="auto-issue-enabled" aria-describedby="auto-issue-description auto-issue-feedback">
                         <span>Автоматический выпуск ЭПЛ</span>
                     </label>
-                    <p id="auto-issue-description" class="section-subtitle">ЭПЛ выпустится автоматически, когда AsemPro получит положительные результаты обоих осмотров.</p>
+                    <p id="auto-issue-description" class="section-subtitle">Оба сотрудника включают автовыпуск и записывают результаты осмотров. Отметки действуют для одного ЭПЛ в пределах 12 часов и одной даты по Москве.</p>
                     <p id="auto-issue-feedback" class="section-subtitle" role="status"></p>
+                    <form id="inspection-form" hidden>
+                        <div class="inspection-fields">
+                            <div class="form-group">
+                                <label for="inspection-phone">Телефон водителя</label>
+                                <input id="inspection-phone" type="tel" maxlength="24" required>
+                            </div>
+                            <button type="submit" class="btn btn-outline" id="inspection-find">Найти водителя</button>
+                        </div>
+                        <div id="inspection-driver" hidden>
+                            <p id="inspection-driver-summary"></p>
+                            <div class="inspection-actions">
+                                <button type="button" class="btn btn-primary" id="inspection-pass">Записать результат</button>
+                                <button type="button" class="btn btn-outline" id="inspection-revoke">Отозвать отметку</button>
+                            </div>
+                        </div>
+                        <p id="inspection-feedback" class="section-subtitle" role="status"></p>
+                    </form>
                 </div>
                 <div class="table-container">
                     <table id="checks-table">
