@@ -3,7 +3,7 @@ const QUEUE = 'waybillInspections';
 const SHIFT_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 60 * 1000;
 const ROLES = { med: 'medic', tech: 'mechanic' };
-const PAPER_EXPIRY = { med: '17.10.2027', tech: '17.09.2027' };
+const PAPER_CERTIFICATE_PROFILES = 'waybillCertificateProfiles';
 const CRON_BATCH_SIZE = 4;
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -130,30 +130,53 @@ function certificate(profile, date) {
   return { name: str(name), serial: str(serial), issued: str(issued), expires: str(expires) };
 }
 
+function certificateFields(prefix, cert) {
+  return {
+    [prefix + 'Name']: cert.name,
+    [prefix + 'CertSerial']: cert.serial,
+    [prefix + 'Issued']: cert.issued,
+    [prefix + 'Expires']: cert.expires,
+  };
+}
+
 function usableDriver(doc) {
   return doc && doc.fields?.active?.booleanValue !== false && plate(field(doc, 'plateNumber'));
 }
 
-async function paperIssueSettings(store) {
+async function paperIssueSettings(store, now) {
   const roles = Object.values(ROLES);
-  const names = roles.map(role => store.name('settings', policyId(role)));
-  const policies = await store.read(names);
+  const profileSettings = store.name('settings', PAPER_CERTIFICATE_PROFILES);
+  const settings = await store.read([profileSettings, ...roles.map(role => store.name('settings', policyId(role)))]);
   const staff = await store.query('admins', condition('role', 'IN', {
     arrayValue: { values: roles.map(str) },
   }), undefined, {
-    select: { fields: ['role', 'autoIssueEnabled', 'autoIssueRevision', 'certExpires']
+    select: { fields: ['role', 'autoIssueEnabled', 'autoIssueRevision', 'fullName', 'certSerial', 'certIssued', 'certExpires']
       .map(fieldPath => ({ fieldPath })) },
   });
-  const expiry = {};
+  const configuredProfiles = settings.get(profileSettings);
+  const certificates = {};
+  const namesByPrefix = {};
   for (const [prefix, role] of Object.entries(ROLES)) {
-    const policy = policies.get(store.name('settings', policyId(role)));
+    const policy = settings.get(store.name('settings', policyId(role)));
     const employees = staff.filter(doc => field(doc, 'role') === role);
     const enabled = employees.filter(doc => autoIssueEnabled(doc, policy));
     if (employees.length ? !enabled.length : policy?.fields?.enabled?.booleanValue !== true) return null;
-    const dates = enabled.map(doc => field(doc, 'certExpires'));
-    expiry[prefix] = dates.find(date => isoCertificateDate(date).startsWith('2027-')) || PAPER_EXPIRY[prefix];
+    const profileId = field(configuredProfiles, role);
+    if (validId(profileId)) {
+      namesByPrefix[prefix] = store.name('admins', profileId);
+    } else {
+      certificates[prefix] = enabled.map(profile => certificate(profile, now)).find(Boolean);
+    }
   }
-  return expiry;
+
+  const configuredNames = Object.entries(namesByPrefix);
+  if (configuredNames.length) {
+    const profiles = await store.read(configuredNames.map(([, name]) => name));
+    for (const [prefix, name] of configuredNames) {
+      certificates[prefix] = certificate(profiles.get(name), now);
+    }
+  }
+  return certificates;
 }
 
 function canIssuePending(doc, now) {
@@ -180,8 +203,8 @@ export async function issuePaperWaybill(store, waybillId, expectedUid, now = new
       if (!uid || (expectedUid && uid !== expectedUid)) return { result: 'not-found' };
       if (!canIssuePending(bill, now)) return { result: 'unchanged' };
 
-      const expiry = await paperIssueSettings(tx);
-      if (!expiry) return { result: 'unchanged' };
+      const certificates = await paperIssueSettings(tx, now);
+      if (!certificates) return { result: 'unchanged' };
       const driverId = field(bill, 'driverId');
       if (!validId(driverId)) return { result: 'unchanged' };
       const driverName = tx.name('drivers', driverId);
@@ -197,12 +220,12 @@ export async function issuePaperWaybill(store, waybillId, expectedUid, now = new
       }
 
       const fields = activation(now);
-      for (const [prefix, date] of Object.entries(expiry)) {
+      for (const prefix of Object.keys(ROLES)) {
         if (field(bill, prefix + 'Status') === 'ok') continue;
-        // Эти результаты оформляются на бумаге. Установленный APK
-        // подставляет старые подписи, если статус отметки отсутствует.
+        // Реквизиты сертификата печатаются рядом с бумажной отметкой.
         fields[prefix + 'Status'] = str('paper');
-        fields[prefix + 'Expires'] = str(date);
+        const cert = certificates[prefix];
+        if (cert) Object.assign(fields, certificateFields(prefix, cert));
       }
       return { result: 'issued', writes: [updateWaybill(bill, fields)] };
     });
@@ -213,8 +236,7 @@ export async function issuePaperWaybill(store, waybillId, expectedUid, now = new
 }
 
 export async function issuePendingPaperWaybills(store, now = new Date()) {
-  const expiry = await paperIssueSettings(store);
-  if (!expiry) return 0;
+  if (!await paperIssueSettings(store, now)) return 0;
   const requests = await store.query('waybills', condition('status', 'EQUAL', str('pending')), undefined, {
     select: { fields: ['status', 'authUid', 'createdAt', 'medStatus', 'techStatus'].map(fieldPath => ({ fieldPath })) },
   });
@@ -347,10 +369,7 @@ function inspectionFields(result, prefix) {
     [prefix + 'Status']: str('ok'),
     [prefix + 'ConfirmedAt']: time(observed),
     [prefix + 'ConfirmedBy']: result.uid,
-    [prefix + 'Name']: result.name,
-    [prefix + 'CertSerial']: result.serial,
-    [prefix + 'Issued']: result.issued,
-    [prefix + 'Expires']: result.expires,
+    ...certificateFields(prefix, result),
     [prefix + 'Time']: str(moscow(observed).time),
   };
 }
