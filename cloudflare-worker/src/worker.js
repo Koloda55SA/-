@@ -12,7 +12,7 @@
 //   - Реальное изменение делает служебный ключ (секрет SERVICE_ACCOUNT_JSON),
 //     который хранится только в зашифрованных секретах Worker.
 
-import { findInspectionDriver, firestore, issueReadyWaybills, recordInspection } from './auto-issue.js';
+import { autoIssueEnabled, findInspectionDriver, firestore, issueReadyWaybills, policyId, recordInspection } from './auto-issue.js';
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -139,15 +139,18 @@ async function saveAutoIssuePreference(env, staff, body, cors) {
     return json({ error: 'bad-preference' }, 400, cors);
   }
   const store = firestore(staff.projectId, await getAccessToken(env));
-  await store.commit([{
-    update: {
-      name: staff.profile.name,
-      fields: { autoIssueEnabled: { booleanValue: body.enabled } },
-    },
-    updateMask: { fieldPaths: ['autoIssueEnabled'] },
-    currentDocument: { updateTime: staff.profile.updateTime },
-  }]);
-  return json({ ok: true }, 200, cors);
+  const policyName = store.name('settings', policyId(staff.role));
+  const permitted = await store.transaction(async tx => {
+    const docs = await tx.read([staff.profile.name, policyName]);
+    if (docs.get(staff.profile.name)?.fields?.role?.stringValue !== staff.role) return { result: false };
+    const revision = docs.get(policyName)?.fields?.revision?.stringValue || '';
+    const fields = { autoIssueEnabled: { booleanValue: body.enabled }, autoIssueRevision: { stringValue: revision } };
+    return { result: true, writes: [{
+      update: { name: staff.profile.name, fields },
+      updateMask: { fieldPaths: Object.keys(fields) },
+    }] };
+  });
+  return permitted ? json({ ok: true }, 200, cors) : json({ error: 'staff-role-required' }, 403, cors);
 }
 
 const inspectionRoutes = new Set(['/auto-issue-preference', '/inspection-driver', '/inspection-result']);
@@ -168,11 +171,10 @@ async function handleInspection(path, env, body, cors) {
   if (path === '/auto-issue-preference') {
     return saveAutoIssuePreference(env, staff, body, cors);
   }
-  if (staff.profile.fields?.autoIssueEnabled?.booleanValue !== true) {
-    return json({ error: 'auto-issue-disabled' }, 403, cors);
-  }
   const store = firestore(staff.projectId, await getAccessToken(env));
   if (path === '/inspection-driver') {
+    const policy = await store.get('settings', policyId(staff.role));
+    if (!autoIssueEnabled(staff.profile, policy)) return json({ error: 'auto-issue-disabled' }, 403, cors);
     const { status = 200, ...result } = await findInspectionDriver(store, body.phone);
     return json(result, status, cors);
   }

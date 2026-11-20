@@ -9,7 +9,16 @@ const MONTHS = ['января', 'февраля', 'марта', 'апреля', 
 const str = (value) => ({ stringValue: value });
 const time = (date) => ({ timestampValue: date.toISOString() });
 const field = (doc, key) => doc?.fields?.[key]?.stringValue || '';
-const checked = (doc) => doc?.fields?.autoIssueEnabled?.booleanValue === true;
+export const policyId = (role) => 'autoIssue-' + role;
+
+export function autoIssueEnabled(profile, policy) {
+  if (!profile) return false;
+  const revision = field(policy, 'revision');
+  if (revision && field(profile, 'autoIssueRevision') !== revision) {
+    return policy.fields.enabled?.booleanValue === true;
+  }
+  return profile.fields?.autoIssueEnabled?.booleanValue === true;
+}
 const docId = (doc) => doc.name.split('/').at(-1);
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 
@@ -163,11 +172,12 @@ async function writeInspection(tx, staff, body, now) {
   const driverName = tx.name('drivers', body.driverId);
   const queueName = tx.name(QUEUE, body.driverId);
   const staffName = tx.name('admins', staff.uid);
-  const docs = await tx.read([driverName, queueName, staffName]);
+  const policyName = tx.name('settings', policyId(staff.role));
+  const docs = await tx.read([driverName, queueName, staffName, policyName]);
   const driver = docs.get(driverName);
   const previous = docs.get(queueName);
   const profile = docs.get(staffName);
-  if (field(profile, 'role') !== staff.role || !checked(profile)) {
+  if (field(profile, 'role') !== staff.role || !autoIssueEnabled(profile, docs.get(policyName))) {
     return { result: { error: 'auto-issue-disabled', status: 403 } };
   }
   const currentPlate = plate(field(driver, 'plateNumber'));
@@ -252,14 +262,16 @@ async function prepareIssuance(store, queue, now) {
   const driverName = store.name('drivers', driverId);
   const medName = store.name('admins', med.uid.stringValue);
   const techName = store.name('admins', tech.uid.stringValue);
-  const docs = await store.read([driverName, medName, techName]);
+  const medPolicy = store.name('settings', policyId(ROLES.med));
+  const techPolicy = store.name('settings', policyId(ROLES.tech));
+  const docs = await store.read([driverName, medName, techName, medPolicy, techPolicy]);
   const driver = docs.get(driverName);
   const medic = docs.get(medName);
   const mechanic = docs.get(techName);
   const currentPlate = plate(field(driver, 'plateNumber'));
   if (!usableDriver(driver) || med.plate?.stringValue !== currentPlate || tech.plate?.stringValue !== currentPlate ||
       field(medic, 'role') !== ROLES.med || field(mechanic, 'role') !== ROLES.tech ||
-      !checked(medic) || !checked(mechanic)) {
+      !autoIssueEnabled(medic, docs.get(medPolicy)) || !autoIssueEnabled(mechanic, docs.get(techPolicy))) {
     return { result: false, writes: [remove(queue)] };
   }
 

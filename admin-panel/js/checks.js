@@ -13,7 +13,8 @@ const Checks = {
     _items: [],
     _busy: {},
     _inspectionDriver: null,
-    _staffSubscription: null,
+    _subscriptions: [],
+    _policies: {},
     _staff: [],
     _saving: new Set(),
 
@@ -31,8 +32,9 @@ const Checks = {
     renderAutoIssue() {
         const settings = document.getElementById('auto-issue-settings');
         const user = Auth.currentUser;
-        if (Checks._staffSubscription) Checks._staffSubscription();
-        Checks._staffSubscription = null;
+        for (const unsubscribe of Checks._subscriptions) unsubscribe();
+        Checks._subscriptions = [];
+        Checks._policies = {};
         Checks._staff = [];
         Checks._saving = new Set();
         settings.hidden = !user;
@@ -42,28 +44,63 @@ const Checks = {
         document.getElementById('inspection-phone').value = '';
         Checks.clearInspectionDriver();
         Checks.renderInspectionForm();
-        for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
+        const groups = document.querySelectorAll('[data-issue-role]');
+        for (const group of groups) {
+            group.querySelector('select').replaceChildren();
+            Checks.renderRole(group);
+        }
         if (!user) return;
         const staff = db.collection('admins');
         const isAdmin = Auth.role === 'admin';
+        const refresh = () => {
+            for (const group of groups) Checks.renderRole(group);
+            Checks.renderInspectionForm();
+        };
+        const failed = message => {
+            refresh();
+            feedback.textContent = message + ' Обновите страницу.';
+            feedback.dataset.error = '';
+        };
+        for (const group of groups) {
+            const role = group.dataset.issueRole;
+            if (!isAdmin && Auth.role !== role) continue;
+            Checks._subscriptions.push(Checks.policyRef(role).onSnapshot(snapshot => {
+                if (Auth.currentUser !== user) return;
+                Checks._policies[role] = snapshot.data() || {};
+                refresh();
+            }, () => {
+                if (Auth.currentUser !== user) return;
+                delete Checks._policies[role];
+                failed('Не удалось загрузить настройку автодопуска.');
+            }));
+        }
         const source = isAdmin ? staff.where('role', 'in', ['medic', 'mechanic']) : staff.doc(user.uid);
-        Checks._staffSubscription = source.onSnapshot(snapshot => {
+        Checks._subscriptions.push(source.onSnapshot(snapshot => {
             if (Auth.currentUser !== user) return;
             Checks._staff = (isAdmin ? snapshot.docs : (snapshot.exists ? [snapshot] : []))
                 .map(doc => ({ ...doc.data(), id: doc.id }))
                 .sort((a, b) => (a.fullName || a.id).localeCompare(b.fullName || b.id, 'ru'));
-            if (!isAdmin) {
-                Auth.profile.autoIssueEnabled = Checks._staff.some(s => s.id === user.uid && s.role === Auth.role && s.autoIssueEnabled === true);
-                Checks.renderInspectionForm();
-            }
-            for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
+            refresh();
         }, () => {
             if (Auth.currentUser !== user) return;
-            if (!isAdmin) Checks._staff = [{ ...Auth.profile, id: user.uid, role: Auth.role }];
-            for (const group of document.querySelectorAll('[data-issue-role]')) Checks.renderRole(group);
-            feedback.textContent = 'Не удалось обновить настройки сотрудников.';
-            feedback.dataset.error = '';
-        });
+            Checks._staff = [];
+            failed('Не удалось загрузить список сотрудников.');
+        }));
+    },
+
+    policyRef(role) {
+        return db.collection('settings').doc('autoIssue-' + role);
+    },
+
+    enabledFor(employee) {
+        const policy = Checks._policies[employee?.role];
+        if (!policy || !employee) return false;
+        if (policy.revision && employee.autoIssueRevision !== policy.revision) return policy.enabled === true;
+        return employee.autoIssueEnabled === true;
+    },
+
+    canRecord() {
+        return Checks.enabledFor(Checks._staff.find(s => s.id === Auth.currentUser?.uid && s.role === Auth.role));
     },
 
     renderRole(group) {
@@ -72,21 +109,28 @@ const Checks = {
         const input = group.querySelector('input');
         const select = group.querySelector('select');
         const note = group.querySelector('small');
-        const selected = staff.find(s => s.id === select.value) || staff[0];
-        const otherRole = Auth.role !== 'admin' && Auth.role !== role;
-        select.replaceChildren(...staff.map(s => new Option(s.fullName || s.phone || s.id, s.id)));
-        if (selected) select.value = selected.id;
-        select.hidden = staff.length < 2;
+        const isAdmin = Auth.role === 'admin';
+        const otherRole = !isAdmin && Auth.role !== role;
+        const policy = Checks._policies[role];
+        const selected = isAdmin ? staff.find(s => s.id === select.value) : staff[0];
+        const all = role === 'medic' ? 'Все медики' : 'Все мастера';
+        const options = staff.map(s => new Option(s.fullName || s.phone || s.id, s.id));
+        if (isAdmin) options.unshift(new Option(all, ''));
+        select.replaceChildren(...options);
+        select.value = selected?.id || '';
+        select.hidden = !isAdmin || !staff.length;
         select.disabled = Checks._saving.has(role);
-        input.checked = selected?.autoIssueEnabled === true;
-        input.indeterminate = otherRole;
-        input.disabled = otherRole || !selected || Checks._saving.has(role);
+        input.checked = selected ? Checks.enabledFor(selected) : policy?.enabled === true;
+        input.indeterminate = otherRole || !policy;
+        input.disabled = otherRole || !policy || (!isAdmin && !selected) || Checks._saving.has(role);
         note.textContent = otherRole ? 'Настройка в кабинете сотрудника' :
-            selected ? (selected.fullName || selected.phone || '') : 'Сотрудник не найден';
+            !policy ? 'Настройка ещё не загружена' :
+            selected ? (selected.fullName || selected.phone || '') :
+            isAdmin ? 'Выбор применяется ко всем действующим и новым сотрудникам этой роли.' : 'Сотрудник не найден';
     },
 
     renderInspectionForm() {
-        document.getElementById('inspection-form').hidden = !Auth.currentUser || Auth.role === 'admin' || Auth.profile.autoIssueEnabled !== true;
+        document.getElementById('inspection-form').hidden = !Checks.canRecord();
         document.getElementById('inspection-pass').textContent = Auth.role === 'medic'
             ? 'Записать пройденный медосмотр' : 'Записать пройденный техконтроль';
     },
@@ -129,7 +173,7 @@ const Checks = {
     async findInspectionDriver(event) {
         event.preventDefault();
         const user = Auth.currentUser;
-        if (!user || Auth.profile.autoIssueEnabled !== true) return;
+        if (!user || !Checks.canRecord()) return;
         const input = document.getElementById('inspection-phone');
         const phone = Drivers._normalizePhone(input.value);
         const button = document.getElementById('inspection-find');
@@ -139,7 +183,7 @@ const Checks = {
         Checks.inspectionMessage('Поиск…');
         try {
             const { driver } = await Checks.inspectionRequest(user, '/inspection-driver', { phone });
-            if (Auth.currentUser !== user || Auth.profile.autoIssueEnabled !== true) return;
+            if (Auth.currentUser !== user || !Checks.canRecord()) return;
             Checks._inspectionDriver = driver;
             document.getElementById('inspection-driver-summary').textContent = driver.name + ' · ' + driver.plate;
             document.getElementById('inspection-driver').hidden = false;
@@ -155,7 +199,7 @@ const Checks = {
     async recordInspection(passed) {
         const user = Auth.currentUser;
         const driver = Checks._inspectionDriver;
-        if (!user || !driver || Auth.profile.autoIssueEnabled !== true) return;
+        if (!user || !driver || !Checks.canRecord()) return;
         const controls = document.querySelectorAll('#inspection-form input, #inspection-form button');
         controls.forEach(control => { control.disabled = true; });
         Checks.inspectionMessage('Сохранение…');
@@ -181,7 +225,7 @@ const Checks = {
         const id = group.querySelector('select').value;
         const enabled = input.checked;
         const user = Auth.currentUser;
-        if (!user || !id || (Auth.role !== 'admin' && (user.uid !== id || Auth.role !== role))) return;
+        if (!user || input.disabled || (Auth.role !== 'admin' && (user.uid !== id || Auth.role !== role))) return;
         const profile = Auth.profile;
         const saving = Checks._saving;
         saving.add(role);
@@ -193,19 +237,23 @@ const Checks = {
 
         try {
             if (Auth.role === 'admin') {
-                const ref = db.collection('admins').doc(id);
+                const policy = Checks.policyRef(role);
                 await db.runTransaction(async tx => {
+                    if (!id) {
+                        // A new revision supersedes all earlier individual choices in this role.
+                        tx.set(policy, { enabled, revision: crypto.randomUUID() });
+                        return;
+                    }
+                    const ref = db.collection('admins').doc(id);
                     const snapshot = await tx.get(ref);
                     if (!snapshot.exists || snapshot.data().role !== role) throw new Error('Роль изменилась');
-                    tx.update(ref, { autoIssueEnabled: enabled });
+                    const current = await tx.get(policy);
+                    tx.update(ref, { autoIssueEnabled: enabled, autoIssueRevision: current.data()?.revision || '' });
                 });
             } else {
                 await Checks.inspectionRequest(user, '/auto-issue-preference', { enabled });
             }
             if (Auth.profile !== profile) return;
-            const employee = Checks._staff.find(s => s.id === id);
-            if (employee) employee.autoIssueEnabled = enabled;
-            if (id === user.uid) profile.autoIssueEnabled = enabled;
             Checks.clearInspectionDriver();
             Checks.renderInspectionForm();
             feedback.textContent = enabled ? 'Автодопуск включён.' : 'Автодопуск выключен.';
