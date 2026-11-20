@@ -3,7 +3,7 @@ const QUEUE = 'waybillInspections';
 const SHIFT_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 60 * 1000;
 const ROLES = { med: 'medic', tech: 'mechanic' };
-const PAPER_EXPIRY = { med: '15.11.2027', tech: '20.11.2027' };
+const PAPER_EXPIRY = { med: '17.10.2027', tech: '17.09.2027' };
 const CRON_BATCH_SIZE = 4;
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
