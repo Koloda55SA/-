@@ -255,35 +255,18 @@
                 <div id="auto-issue-settings" class="auto-issue-settings" hidden>
                     <div class="auto-role-options">
                         <div data-issue-role="medic">
-                            <label><input type="checkbox" data-auto-issue="medic" disabled aria-describedby="issue-medic-state"><span>Автоматический допуск медика</span></label>
+                            <label><input type="checkbox" data-auto-issue="medic" disabled aria-describedby="issue-medic-state auto-issue-description"><span>Автоматический допуск медика</span></label>
                             <select aria-label="Выбрать медика" hidden></select>
                             <small id="issue-medic-state" role="status"></small>
                         </div>
                         <div data-issue-role="mechanic">
-                            <label><input type="checkbox" data-auto-issue="mechanic" disabled aria-describedby="issue-mechanic-state"><span>Автоматический допуск мастера</span></label>
+                            <label><input type="checkbox" data-auto-issue="mechanic" disabled aria-describedby="issue-mechanic-state auto-issue-description"><span>Автоматический допуск мастера</span></label>
                             <select aria-label="Выбрать мастера" hidden></select>
                             <small id="issue-mechanic-state" role="status"></small>
                         </div>
                     </div>
-                    <p id="auto-issue-description" class="section-subtitle">Запишите результат осмотра один раз для этого ЭПЛ. Когда есть обе отметки и запрос водителя, лист выпускается автоматически.</p>
+                    <p id="auto-issue-description" class="section-subtitle">Когда включены обе галочки, приложение выпускает ЭПЛ сразу после запроса водителя. Медик и мастер оформляют допуск на бумаге.</p>
                     <p id="auto-issue-feedback" class="section-subtitle" role="status"></p>
-                    <form id="inspection-form" hidden>
-                        <div class="inspection-fields">
-                            <div class="form-group">
-                                <label for="inspection-phone">Телефон водителя</label>
-                                <input id="inspection-phone" type="tel" maxlength="24" required>
-                            </div>
-                            <button type="submit" class="btn btn-outline" id="inspection-find">Найти водителя</button>
-                        </div>
-                        <div id="inspection-driver" hidden>
-                            <p id="inspection-driver-summary"></p>
-                            <div class="inspection-actions">
-                                <button type="button" class="btn btn-primary" id="inspection-pass">Записать результат</button>
-                                <button type="button" class="btn btn-outline" id="inspection-revoke">Отозвать отметку</button>
-                            </div>
-                        </div>
-                        <p id="inspection-feedback" class="section-subtitle" role="status"></p>
-                    </form>
                 </div>
                 <div class="table-container">
                     <table id="checks-table">
@@ -805,7 +788,7 @@
     <script src="js/requests.js"></script>
     <script src="js/support.js"></script>
     <script src="js/accounting.js"></script>
-    <script src="js/checks.js"></script>
+    <script src="js/checks.js?v=2"></script>
     <script src="js/staff.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/app.js"></script>

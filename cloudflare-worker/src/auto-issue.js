@@ -3,6 +3,8 @@ const QUEUE = 'waybillInspections';
 const SHIFT_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 60 * 1000;
 const ROLES = { med: 'medic', tech: 'mechanic' };
+const PAPER_EXPIRY = { med: '15.11.2027', tech: '20.11.2027' };
+const CRON_BATCH_SIZE = 4;
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
@@ -20,26 +22,6 @@ export function autoIssueEnabled(profile, policy) {
   return profile.fields?.autoIssueEnabled?.booleanValue === true;
 }
 
-// Drivers only need the two switches. Staff records stay on the server.
-export async function mayOpenPendingWaybill(store) {
-  return store.transaction(async tx => {
-    const roles = Object.values(ROLES);
-    const names = roles.map(role => tx.name('settings', policyId(role)));
-    const policies = await tx.read(names);
-    const staff = await tx.query('admins', condition('role', 'IN', {
-      arrayValue: { values: roles.map(str) },
-    }), undefined, {
-      select: { fields: ['role', 'autoIssueEnabled', 'autoIssueRevision'].map(fieldPath => ({ fieldPath })) },
-    });
-    const enabled = roles.every((role, index) => {
-      const policy = policies.get(names[index]);
-      const employees = staff.filter(doc => field(doc, 'role') === role);
-      return employees.length ? employees.some(doc => autoIssueEnabled(doc, policy)) :
-        policy?.fields?.enabled?.booleanValue === true;
-    });
-    return { result: enabled };
-  });
-}
 const docId = (doc) => doc.name.split('/').at(-1);
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 
@@ -150,6 +132,110 @@ function certificate(profile, date) {
 
 function usableDriver(doc) {
   return doc && doc.fields?.active?.booleanValue !== false && plate(field(doc, 'plateNumber'));
+}
+
+async function paperIssueSettings(store) {
+  const roles = Object.values(ROLES);
+  const names = roles.map(role => store.name('settings', policyId(role)));
+  const policies = await store.read(names);
+  const staff = await store.query('admins', condition('role', 'IN', {
+    arrayValue: { values: roles.map(str) },
+  }), undefined, {
+    select: { fields: ['role', 'autoIssueEnabled', 'autoIssueRevision', 'certExpires']
+      .map(fieldPath => ({ fieldPath })) },
+  });
+  const expiry = {};
+  for (const [prefix, role] of Object.entries(ROLES)) {
+    const policy = policies.get(store.name('settings', policyId(role)));
+    const employees = staff.filter(doc => field(doc, 'role') === role);
+    const enabled = employees.filter(doc => autoIssueEnabled(doc, policy));
+    if (employees.length ? !enabled.length : policy?.fields?.enabled?.booleanValue !== true) return null;
+    const dates = enabled.map(doc => field(doc, 'certExpires'));
+    expiry[prefix] = dates.find(date => isoCertificateDate(date).startsWith('2027-')) || PAPER_EXPIRY[prefix];
+  }
+  return expiry;
+}
+
+function canIssuePending(doc, now) {
+  if (field(doc, 'status') !== 'pending') return false;
+  const createdAt = Date.parse(doc.fields?.createdAt?.timestampValue);
+  return createdAt <= now.getTime() && createdAt > now.getTime() - SHIFT_MS &&
+    Object.keys(ROLES).every(prefix => ['', 'ok'].includes(field(doc, prefix + 'Status')));
+}
+
+function updateWaybill(pending, fields) {
+  return {
+    update: { name: pending.name, fields },
+    updateMask: { fieldPaths: Object.keys(fields) },
+    currentDocument: { updateTime: pending.updateTime },
+  };
+}
+
+export async function issuePaperWaybill(store, waybillId, expectedUid, now = new Date()) {
+  try {
+    return await store.transaction(async tx => {
+      const billName = tx.name('waybills', waybillId);
+      const bill = (await tx.read([billName])).get(billName);
+      const uid = field(bill, 'authUid');
+      if (!uid || (expectedUid && uid !== expectedUid)) return { result: 'not-found' };
+      if (!canIssuePending(bill, now)) return { result: 'unchanged' };
+
+      const expiry = await paperIssueSettings(tx);
+      if (!expiry) return { result: 'unchanged' };
+      const driverId = field(bill, 'driverId');
+      if (!validId(driverId)) return { result: 'unchanged' };
+      const driverName = tx.name('drivers', driverId);
+      const driver = (await tx.read([driverName])).get(driverName);
+      if (!usableDriver(driver) || (field(driver, 'authUid') || driverId) !== uid ||
+          plate(field(bill, 'plateNumber')) !== plate(field(driver, 'plateNumber'))) {
+        return { result: 'unchanged' };
+      }
+      const waybills = await driverWaybills(tx, uid);
+      if (waybills.some(doc => isActive(doc, now)) ||
+          waybills.find(doc => field(doc, 'status') === 'pending')?.name !== billName) {
+        return { result: 'unchanged' };
+      }
+
+      const fields = activation(now);
+      for (const [prefix, date] of Object.entries(expiry)) {
+        if (field(bill, prefix + 'Status') === 'ok') continue;
+        // Эти результаты оформляются на бумаге. Установленный APK
+        // подставляет старые подписи, если статус отметки отсутствует.
+        fields[prefix + 'Status'] = str('paper');
+        fields[prefix + 'Expires'] = str(date);
+      }
+      return { result: 'issued', writes: [updateWaybill(bill, fields)] };
+    });
+  } catch (error) {
+    if (error instanceof Conflict) return 'unchanged';
+    throw error;
+  }
+}
+
+export async function issuePendingPaperWaybills(store, now = new Date()) {
+  const expiry = await paperIssueSettings(store);
+  if (!expiry) return 0;
+  const requests = await store.query('waybills', condition('status', 'EQUAL', str('pending')), undefined, {
+    select: { fields: ['status', 'authUid', 'createdAt', 'medStatus', 'techStatus'].map(fieldPath => ({ fieldPath })) },
+  });
+  const pending = requests.filter(doc => field(doc, 'authUid') && canIssuePending(doc, now))
+    .sort((a, b) => Date.parse(b.fields.createdAt.timestampValue) - Date.parse(a.fields.createdAt.timestampValue));
+  const latest = [];
+  const seen = new Set();
+  for (const bill of pending) {
+    const uid = field(bill, 'authUid');
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    latest.push(bill);
+  }
+  // Обходим заявки по кругу, чтобы необрабатываемый запрос не задерживал остальных.
+  const start = Math.floor(now.getTime() / RETRY_MS) * CRON_BATCH_SIZE % (latest.length || 1);
+  const batch = latest.slice(start).concat(latest.slice(0, start)).slice(0, CRON_BATCH_SIZE);
+  const results = await Promise.allSettled(batch.map(bill => issuePaperWaybill(store, docId(bill), field(bill, 'authUid'), now)));
+  for (const result of results) {
+    if (result.status === 'rejected') console.error('Automatic paper waybill issuance:', result.reason.message);
+  }
+  return results.filter(result => result.status === 'fulfilled' && result.value === 'issued').length;
 }
 
 function resultOf(queue, prefix) {
@@ -297,18 +383,8 @@ async function prepareIssuance(store, queue, now) {
   }
 
   const uid = field(driver, 'authUid') || driverId;
-  const waybills = await store.query('waybills', {
-    compositeFilter: { op: 'AND', filters: [
-      condition('authUid', 'EQUAL', str(uid)),
-      condition('status', 'IN', { arrayValue: { values: [str('pending'), str('active')] } }),
-    ] },
-  }, 12, {
-    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
-    select: { fields: ['status', 'driverId', 'plateNumber', 'createdAt', 'expiresAt', 'medStatus', 'techStatus']
-      .map((fieldPath) => ({ fieldPath })) },
-  });
-  const active = waybills.some((doc) => field(doc, 'status') === 'active' &&
-    Date.parse(doc.fields?.expiresAt?.timestampValue) > now.getTime());
+  const waybills = await driverWaybills(store, uid);
+  const active = waybills.some(doc => isActive(doc, now));
   const pending = waybills.find((doc) => field(doc, 'status') === 'pending');
   const requestedAt = Date.parse(pending?.fields?.createdAt?.timestampValue);
   if (active || !Number.isFinite(requestedAt) || requestedAt <= now.getTime() - SHIFT_MS ||
@@ -321,20 +397,31 @@ async function prepareIssuance(store, queue, now) {
   // Сохраняем уже записанные ручные результаты.
   if (!field(pending, 'medStatus')) Object.assign(fields, inspectionFields(med, 'med'));
   if (!field(pending, 'techStatus')) Object.assign(fields, inspectionFields(tech, 'tech'));
-  return { result: true, writes: [
-    remove(queue),
-    {
-      update: { name: pending.name, fields },
-      updateMask: { fieldPaths: Object.keys(fields) },
-      currentDocument: { updateTime: pending.updateTime },
-    },
-  ] };
+  return { result: true, writes: [remove(queue), updateWaybill(pending, fields)] };
 }
 
-export async function issueReadyWaybills(store, now = new Date(), onlyDriver = null) {
+function driverWaybills(store, uid) {
+  return store.query('waybills', {
+    compositeFilter: { op: 'AND', filters: [
+      condition('authUid', 'EQUAL', str(uid)),
+      condition('status', 'IN', { arrayValue: { values: [str('pending'), str('active')] } }),
+    ] },
+  }, undefined, {
+    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+    select: { fields: ['status', 'driverId', 'plateNumber', 'createdAt', 'expiresAt', 'medStatus', 'techStatus']
+      .map(fieldPath => ({ fieldPath })) },
+  });
+}
+
+function isActive(doc, now) {
+  return field(doc, 'status') === 'active' &&
+    Date.parse(doc.fields?.expiresAt?.timestampValue) > now.getTime();
+}
+
+export async function issueReadyWaybills(store, now = new Date(), onlyDriver = null, limit = 8) {
   const queue = onlyDriver
     ? [await store.get(QUEUE, onlyDriver)].filter((doc) => resultOf(doc, 'med') && resultOf(doc, 'tech'))
-    : await store.query(QUEUE, condition('nextAttemptAt', 'LESS_THAN_OR_EQUAL', time(now)), 8);
+    : await store.query(QUEUE, condition('nextAttemptAt', 'LESS_THAN_OR_EQUAL', time(now)), limit);
   const results = await Promise.allSettled(queue.map((item) => issueForDriver(store, item, now)));
   let issued = 0;
   let failures = 0;

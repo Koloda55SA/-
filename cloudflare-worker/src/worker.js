@@ -12,7 +12,10 @@
 //   - Реальное изменение делает служебный ключ (секрет SERVICE_ACCOUNT_JSON),
 //     который хранится только в зашифрованных секретах Worker.
 
-import { autoIssueEnabled, findInspectionDriver, firestore, issueReadyWaybills, mayOpenPendingWaybill, policyId, recordInspection } from './auto-issue.js';
+import {
+  autoIssueEnabled, findInspectionDriver, firestore, issuePaperWaybill,
+  issuePendingPaperWaybills, issueReadyWaybills, policyId, recordInspection,
+} from './auto-issue.js';
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -174,10 +177,10 @@ async function handleInspection(path, env, body, cors) {
       return json({ error: 'unauthorized' }, 401, cors);
     }
     const store = firestore(JSON.parse(env.SERVICE_ACCOUNT_JSON).project_id, await getAccessToken(env));
-    const bill = await store.get('waybills', body.waybillId);
-    if (bill?.fields?.authUid?.stringValue !== uid) return json({ error: 'not-found' }, 404, cors);
-    const enabled = bill.fields.status?.stringValue === 'pending' && await mayOpenPendingWaybill(store);
-    return json({ enabled }, 200, cors);
+    const result = await issuePaperWaybill(store, body.waybillId, uid);
+    if (result === 'not-found') return json({ error: 'not-found' }, 404, cors);
+    // Выпущенный лист приложение откроет по обновлению документа в Firestore.
+    return json({ enabled: false }, 200, cors);
   }
   let staff;
   try {
@@ -282,8 +285,10 @@ export default {
   async scheduled(_controller, env) {
     const { project_id: projectId } = JSON.parse(env.SERVICE_ACCOUNT_JSON);
     const store = firestore(projectId, await getAccessToken(env));
-    const result = await issueReadyWaybills(store);
-    console.log('Automatic waybill issuance', result);
+    const now = new Date();
+    const inspections = await issueReadyWaybills(store, now, null, 3);
+    const paper = await issuePendingPaperWaybills(store, now);
+    console.log('Automatic waybill issuance', { inspections, paper });
   },
 
   async fetch(request, env) {
