@@ -252,6 +252,14 @@
                         <p class="section-subtitle">Водители, которые запросили допуск в приложении. Медик и мастер отмечают допуск под своими учётными записями — путевой лист выпускается только после обеих отметок.</p>
                     </div>
                 </div>
+                <div id="auto-issue-settings" class="auto-issue-settings" hidden>
+                    <label for="auto-issue-enabled">
+                        <input type="checkbox" id="auto-issue-enabled" aria-describedby="auto-issue-description auto-issue-feedback">
+                        <span>Автоматический выпуск ЭПЛ</span>
+                    </label>
+                    <p id="auto-issue-description" class="section-subtitle">ЭПЛ выпустится автоматически, когда AsemPro получит положительные результаты обоих осмотров.</p>
+                    <p id="auto-issue-feedback" class="section-subtitle" role="status"></p>
+                </div>
                 <div class="table-container">
                     <table id="checks-table">
                         <thead>

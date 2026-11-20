@@ -13,6 +13,53 @@ const Checks = {
     _items: [],
     _busy: {},
 
+    init() {
+        document.getElementById('auto-issue-enabled').addEventListener('change', Checks.saveAutoIssue);
+    },
+
+    renderAutoIssue() {
+        const settings = document.getElementById('auto-issue-settings');
+        settings.hidden = !Auth.currentUser || !['medic', 'mechanic'].includes(Auth.role);
+        const input = document.getElementById('auto-issue-enabled');
+        input.checked = Auth.profile.autoIssueEnabled === true;
+        input.disabled = settings.hidden;
+        const feedback = document.getElementById('auto-issue-feedback');
+        feedback.textContent = '';
+        delete feedback.dataset.error;
+    },
+
+    async saveAutoIssue(event) {
+        const input = event.target;
+        const enabled = input.checked;
+        const user = Auth.currentUser;
+        if (!user) return;
+        const profile = Auth.profile;
+        const feedback = document.getElementById('auto-issue-feedback');
+        input.disabled = true;
+        delete feedback.dataset.error;
+        feedback.textContent = 'Сохранение…';
+
+        try {
+            const idToken = await user.getIdToken();
+            const response = await fetch(AUTH_WORKER_URL + '/auto-issue-preference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken, enabled }),
+            });
+            if (!response.ok) throw new Error('Не удалось сохранить настройку');
+            if (Auth.profile !== profile) return;
+            profile.autoIssueEnabled = enabled;
+            feedback.textContent = enabled ? 'Автовыпуск включён для вашей роли.' : 'Автовыпуск выключен для вашей роли.';
+        } catch (error) {
+            if (Auth.profile !== profile) return;
+            input.checked = profile.autoIssueEnabled === true;
+            feedback.dataset.error = '';
+            feedback.textContent = 'Не удалось сохранить настройку. Попробуйте ещё раз.';
+        } finally {
+            if (Auth.profile === profile) input.disabled = false;
+        }
+    },
+
     MONTHS: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
              'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
 

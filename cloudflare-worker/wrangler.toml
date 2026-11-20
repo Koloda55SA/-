@@ -6,4 +6,4 @@ compatibility_date = "2024-09-01"
 # Секрет SERVICE_ACCOUNT_JSON задаётся отдельно: wrangler secret put SERVICE_ACCOUNT_JSON
 [vars]
 FIREBASE_API_KEY = "AIzaSyDCZolgkxYj6fBvJ_OT1v6o5qVVmVKpuy8"
-ALLOWED_ORIGIN = "https://taxopark-admin.pages.dev"
+ALLOWED_ORIGIN = "https://admin.radev.digital"

@@ -179,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Auth.init();
     Drivers.init();
     Settings.init();
+    Checks.init();
     if (typeof Support !== 'undefined') Support.init();
     if (typeof Accounting !== 'undefined') Accounting.init();
     if (typeof Staff !== 'undefined') Staff.init();

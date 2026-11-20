@@ -204,6 +204,7 @@ const Auth = {
         if (sidebarEl) sidebarEl.textContent = display;
 
         // Очередь на допуск нужна всем ролям (бейдж в меню).
+        Checks.renderAutoIssue();
         Checks.load();
         if (!Auth.isAdmin()) {
             // Медик/мастер видят только раздел «Допуск».
@@ -227,6 +228,7 @@ const Auth = {
             .forEach(m => { if (m && typeof m.stopRealtime === 'function') m.stopRealtime(); });
         Auth.role = 'admin';
         Auth.profile = {};
+        if (typeof Checks !== 'undefined') Checks.renderAutoIssue();
         document.getElementById('loading-page').classList.remove('active');
         document.getElementById('login-page').classList.add('active');
         document.getElementById('dashboard-page').classList.remove('active');

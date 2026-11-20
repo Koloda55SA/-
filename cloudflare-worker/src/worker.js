@@ -4,6 +4,7 @@
 // Эндпоинты (POST, JSON):
 //   /reset-password { idToken, driverUid, newPassword }
 //   /delete-driver  { idToken, driverUid }
+//   /auto-issue-preference { idToken, enabled }
 //
 // Безопасность:
 //   - idToken — токен входа администратора (получаем в админке через getIdToken()).
@@ -19,8 +20,9 @@ function corsHeaders(env, request) {
   // Разрешаем основной домен и его preview-поддомены *.pages.dev того же проекта.
   let allow = allowed;
   try {
-    const host = new URL(origin).host;
-    if (host.endsWith('taxopark-admin.pages.dev') || origin === allowed) {
+    const { protocol, hostname } = new URL(origin);
+    if (origin === allowed || (protocol === 'https:' &&
+        (hostname === 'taxopark-admin.pages.dev' || hostname.endsWith('.taxopark-admin.pages.dev')))) {
       allow = origin;
     }
   } catch (_) {}
@@ -103,8 +105,8 @@ async function getAccessToken(env) {
   return data.access_token;
 }
 
-// ── Проверить, что владелец idToken — администратор ──
-async function getAdminUid(env, idToken) {
+// Проверяем токен Firebase и читаем профиль сотрудника, которому он выдан.
+async function getStaff(env, idToken) {
   // 1) Узнаём uid по idToken (публичный web API key).
   const lookup = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${env.FIREBASE_API_KEY}`,
@@ -122,17 +124,38 @@ async function getAdminUid(env, idToken) {
   //    (правила разрешают читать свой admin-документ).
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON);
   const projectId = sa.project_id;
-  const fs = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/admins/${uid}`,
-    { headers: { Authorization: 'Bearer ' + idToken } }
-  );
-  if (fs.status !== 200) throw new Error('not-admin');
-  // В admins/ лежат и медики/мастера (role = 'medic' | 'mechanic').
-  // Менять пароли и удалять водителей может только администратор.
-  const doc = await fs.json().catch(() => ({}));
-  const role = doc && doc.fields && doc.fields.role && doc.fields.role.stringValue;
-  if (role && role !== 'admin') throw new Error('not-admin');
-  return { uid, projectId };
+  const profileUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/admins/${encodeURIComponent(uid)}`;
+  const fs = await fetch(profileUrl, { headers: { Authorization: 'Bearer ' + idToken } });
+  if (fs.status !== 200) throw new Error('not-staff');
+  const profile = await fs.json();
+  const role = profile.fields?.role?.stringValue || 'admin';
+  return { role, profile, profileUrl };
+}
+
+async function saveAutoIssuePreference(env, body, cors) {
+  if (typeof body?.idToken !== 'string' || !body.idToken || typeof body.enabled !== 'boolean') {
+    return json({ error: 'bad-preference' }, 400, cors);
+  }
+  let staff;
+  try {
+    staff = await getStaff(env, body.idToken);
+  } catch {
+    return json({ error: 'unauthorized' }, 401, cors);
+  }
+  if (staff.role !== 'medic' && staff.role !== 'mechanic') {
+    return json({ error: 'staff-role-required' }, 403, cors);
+  }
+  const url = new URL(staff.profileUrl);
+  url.searchParams.set('updateMask.fieldPaths', 'autoIssueEnabled');
+  url.searchParams.set('currentDocument.updateTime', staff.profile.updateTime);
+  const accessToken = await getAccessToken(env);
+  const result = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + accessToken },
+    body: JSON.stringify({ fields: { autoIssueEnabled: { booleanValue: body.enabled } } }),
+  });
+  if (!result.ok) return json({ error: 'preference-update-failed' }, 502, cors);
+  return json({ ok: true }, 200, cors);
 }
 
 async function handle(request, env) {
@@ -152,15 +175,18 @@ async function handle(request, env) {
   } catch (_) {
     return json({ error: 'bad-json' }, 400, cors);
   }
+  if (url.pathname === '/auto-issue-preference') {
+    return saveAutoIssuePreference(env, body, cors);
+  }
   const { idToken, driverUid } = body || {};
   if (!idToken || !driverUid) {
     return json({ error: 'missing-params' }, 400, cors);
   }
 
   // Авторизация: проверяем, что вызывает админ.
-  let admin;
   try {
-    admin = await getAdminUid(env, idToken);
+    const { role } = await getStaff(env, idToken);
+    if (role !== 'admin') throw new Error('not-admin');
   } catch (e) {
     return json({ error: 'unauthorized', detail: String(e.message || e) }, 401, cors);
   }
