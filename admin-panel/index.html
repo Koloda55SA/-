@@ -50,13 +50,13 @@
                     </div>
                     <div class="form-group">
                         <label for="login-password"><i class="fas fa-lock"></i> Пароль</label>
-                        <input type="password" id="login-password" placeholder="Минимум 6 символов" required minlength="6" autocomplete="current-password">
+                        <input type="password" id="login-password" required autocomplete="current-password">
                     </div>
                     <button type="submit" id="login-btn" class="btn btn-primary btn-full btn-glow">
                         <i class="fas fa-arrow-right-to-bracket"></i> <span id="login-btn-text">Войти</span>
                     </button>
                 </form>
-                <div id="login-error" class="error-message"></div>
+                <div id="login-error" class="error-message" role="status"></div>
                 <div class="login-footer">
                     <i class="fas fa-shield-halved"></i> Безопасный вход по номеру и паролю
                     <div class="login-legal">
@@ -782,7 +782,7 @@
     <script src="vendor/firebase/10.7.1/firebase-auth-compat.js"></script>
     <script src="vendor/firebase/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
+    <script src="js/auth.js?v=2"></script>
     <script src="js/drivers.js"></script>
     <script src="js/waybills.js"></script>
     <script src="js/requests.js"></script>

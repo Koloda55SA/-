@@ -86,6 +86,9 @@ const Auth = {
             e.preventDefault();
             Auth.handleLogin();
         });
+        document.getElementById('login-form').addEventListener('input', () => {
+            Auth.showError('');
+        });
 
         document.getElementById('logout-btn').addEventListener('click', async () => {
             localStorage.removeItem('asempro_admin');
@@ -119,21 +122,23 @@ const Auth = {
     },
 
     async handleLogin() {
+        const btn = document.getElementById('login-btn');
+        if (btn.disabled) return;
         const phoneRaw = document.getElementById('login-phone').value;
-        const password = (document.getElementById('login-password').value || '').trim();
+        const password = document.getElementById('login-password').value;
         const phone = Auth._formatPhone(phoneRaw);
 
-        if (phone.replace(/\D/g, '').length < 10) {
+        if (!/^\+\d{10,15}$/.test(phone)) {
             Auth.showError('Введите корректный номер телефона');
             return;
         }
-        if (password.length < 6) {
-            Auth.showError('Пароль должен быть не короче 6 символов');
+        if (!password) {
+            Auth.showError('Введите пароль');
             return;
         }
 
-        const btn = document.getElementById('login-btn');
         const originalContent = btn.innerHTML;
+        Auth.showError('');
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
 
@@ -157,7 +162,7 @@ const Auth = {
                     msg = 'Аккаунт отключён';
                     break;
                 case 'auth/too-many-requests':
-                    msg = 'Слишком много попыток. Попробуйте позже';
+                    msg = 'Firebase временно ограничил вход после нескольких попыток. Попробуйте позже. Если пароль забыт, обратитесь к администратору.';
                     break;
                 case 'auth/network-request-failed':
                     msg = 'Нет соединения с интернетом';
@@ -236,8 +241,6 @@ const Auth = {
     },
 
     showError(message) {
-        const el = document.getElementById('login-error');
-        el.textContent = message;
-        setTimeout(() => { el.textContent = ''; }, 5000);
+        document.getElementById('login-error').textContent = message;
     }
 };
