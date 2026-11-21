@@ -110,8 +110,11 @@ function moscow(date) {
   };
 }
 
-export function paperInspectionTime(activatedAt) {
-  return moscow(new Date(activatedAt.getTime() - PAPER_INSPECTION_LEAD_MS));
+export function paperInspectionTimes(activatedAt) {
+  const medicalAt = activatedAt.getTime() - PAPER_INSPECTION_LEAD_MS;
+  const gapMinutes = 5 + Math.floor(Math.random() * 6);
+  const technicalAt = medicalAt + gapMinutes * 60 * 1000;
+  return { med: moscow(new Date(medicalAt)), tech: moscow(new Date(technicalAt)) };
 }
 
 function isoCertificateDate(value) {
@@ -224,13 +227,15 @@ export async function issuePaperWaybill(store, waybillId, expectedUid, now = new
         return { result: 'unchanged' };
       }
 
-      const inspection = paperInspectionTime(now);
-      const fields = { ...activation(now), paperInspectionDate: str(inspection.date) };
+      const inspections = paperInspectionTimes(now);
+      const fields = { ...activation(now), paperInspectionDate: str(inspections.med.date) };
       for (const prefix of Object.keys(ROLES)) {
         if (field(bill, prefix + 'Status') === 'ok') continue;
+        const inspection = prefix === 'tech' && !field(bill, 'medStatus') ? inspections.tech : inspections.med;
         // Реквизиты сертификата печатаются рядом с бумажной отметкой.
         fields[prefix + 'Status'] = str('paper');
         fields[prefix + 'Time'] = str(inspection.time);
+        if (prefix === 'tech') fields.paperTechInspectionDate = str(inspection.date);
         const cert = certificates[prefix];
         if (cert) Object.assign(fields, certificateFields(prefix, cert));
       }

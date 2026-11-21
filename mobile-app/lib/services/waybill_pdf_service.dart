@@ -171,9 +171,11 @@ class WaybillPdfService {
 
   static String _inspectionDate(Map<String, dynamic> d, String prefix) {
     final date = _v(d, 'date');
-    return d['${prefix}Status'] == 'paper'
-        ? _vne(d, 'paperInspectionDate', date)
-        : date;
+    if (d['${prefix}Status'] != 'paper') return date;
+    final paperDate = _vne(d, 'paperInspectionDate', date);
+    return prefix == 'tech'
+        ? _vne(d, 'paperTechInspectionDate', paperDate)
+        : paperDate;
   }
 
   static pw.Widget _pendingWaybill(Map<String, dynamic> d) {

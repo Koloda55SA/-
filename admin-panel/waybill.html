@@ -185,8 +185,9 @@
         }
 
         function inspectionDate(d, prefix) {
-            return d[prefix + 'Status'] === 'paper' && d.paperInspectionDate
-                ? d.paperInspectionDate : d.date;
+            if (d[prefix + 'Status'] !== 'paper') return d.date;
+            if (prefix === 'tech' && d.paperTechInspectionDate) return d.paperTechInspectionDate;
+            return d.paperInspectionDate || d.date;
         }
 
         function examRow(title, sub, date, time, role, name, serial, issued, expires) {
