@@ -184,6 +184,11 @@
             </div>`;
         }
 
+        function inspectionDate(d, prefix) {
+            return d[prefix + 'Status'] === 'paper' && d.paperInspectionDate
+                ? d.paperInspectionDate : d.date;
+        }
+
         function examRow(title, sub, date, time, role, name, serial, issued, expires) {
             return `
             <table style="margin-top:3px"><tr class="exam">
@@ -274,8 +279,8 @@
                 </tr>
             </table>
 
-            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, d.date, d.medTime, 'Медицинский работник', ...signer(d, 'med', MED))}
-            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, d.date, d.techTime, 'Контролёр тех.сост. ТС', ...signer(d, 'tech', TECH))}
+            ${examRow('ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН', d.medCert, inspectionDate(d, 'med'), d.medTime, 'Медицинский работник', ...signer(d, 'med', MED))}
+            ${examRow('КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН', d.techCert, inspectionDate(d, 'tech'), d.techTime, 'Контролёр тех.сост. ТС', ...signer(d, 'tech', TECH))}
 
             <table style="margin-top:3px" class="nob"><tr>
                 <td class="nob" style="width:70%;padding:0;padding-right:8px">

@@ -129,7 +129,7 @@ class WaybillPdfService {
         _examBlock(
           title: 'ПРОШЕЛ ПРЕДРЕЙСОВЫЙ\nМЕДИЦИНСКИЙ ОСМОТР К\nИСПОЛНЕНИЮ ТРУДОВЫХ\nОБЯЗАННОСТЕЙ ДОПУЩЕН',
           subText: _v(d, 'medCert'),
-          date: _v(d, 'date'),
+          date: _inspectionDate(d, 'med'),
           time: _v(d, 'medTime'),
           signerLabel: 'Медицинский работник',
           signerName: _signer(d, 'med', 'name', _medDefault),
@@ -141,7 +141,7 @@ class WaybillPdfService {
         _examBlock(
           title: 'КОНТРОЛЬ ТЕХНИЧЕСКОГО\nСОСТОЯНИЯ ТРАНСПОРТНОГО\nСРЕДСТВА ПРОЙДЕН',
           subText: _v(d, 'techCert'),
-          date: _v(d, 'date'),
+          date: _inspectionDate(d, 'tech'),
           time: _v(d, 'techTime'),
           signerLabel: 'Контролёр тех.сост. ТС',
           signerName: _signer(d, 'tech', 'name', _techDefault),
@@ -167,6 +167,13 @@ class WaybillPdfService {
         _footer(d),
       ],
     );
+  }
+
+  static String _inspectionDate(Map<String, dynamic> d, String prefix) {
+    final date = _v(d, 'date');
+    return d['${prefix}Status'] == 'paper'
+        ? _vne(d, 'paperInspectionDate', date)
+        : date;
   }
 
   static pw.Widget _pendingWaybill(Map<String, dynamic> d) {

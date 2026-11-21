@@ -2,6 +2,7 @@ const FIRESTORE = 'https://firestore.googleapis.com/v1';
 const QUEUE = 'waybillInspections';
 const SHIFT_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 60 * 1000;
+const PAPER_INSPECTION_LEAD_MS = 30 * 60 * 1000;
 const ROLES = { med: 'medic', tech: 'mechanic' };
 const PAPER_CERTIFICATE_PROFILES = 'waybillCertificateProfiles';
 const CRON_BATCH_SIZE = 4;
@@ -107,6 +108,10 @@ function moscow(date) {
     time: iso.slice(11, 19),
     isoDate,
   };
+}
+
+export function paperInspectionTime(activatedAt) {
+  return moscow(new Date(activatedAt.getTime() - PAPER_INSPECTION_LEAD_MS));
 }
 
 function isoCertificateDate(value) {
@@ -219,11 +224,13 @@ export async function issuePaperWaybill(store, waybillId, expectedUid, now = new
         return { result: 'unchanged' };
       }
 
-      const fields = activation(now);
+      const inspection = paperInspectionTime(now);
+      const fields = { ...activation(now), paperInspectionDate: str(inspection.date) };
       for (const prefix of Object.keys(ROLES)) {
         if (field(bill, prefix + 'Status') === 'ok') continue;
         // Реквизиты сертификата печатаются рядом с бумажной отметкой.
         fields[prefix + 'Status'] = str('paper');
+        fields[prefix + 'Time'] = str(inspection.time);
         const cert = certificates[prefix];
         if (cert) Object.assign(fields, certificateFields(prefix, cert));
       }
